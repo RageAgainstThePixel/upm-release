@@ -1,8 +1,27 @@
-name: github-action-template
-description: 'A GitHub Actions template repository for TypeScript based Actions'
-# inputs:
-# outputs:
+name: upm-release
+description: A GitHub action to sign and release a upm package.
+inputs:
+  username:
+    description: The username for the Unity account.
+    required: true
+  password:
+    description: The password for the Unity account.
+    required: true
+  organization-id:
+    description: The organization ID for the Unity account.
+    required: true
+  package-json:
+    description: Path to the package.json file. Defaults to searching in the repository root for package.json.
+    required: false
+  release-title:
+    description: Optional title for the release.
+    required: false
+  release-notes:
+    description: Optional release notes.
+    required: false
+  github-token:
+    description: GitHub token to create releases and upload assets. Defaults to the GITHUB_TOKEN secret, but may be required if permissions are not set correctly or the repository is private.
+    required: false
 runs:
-  using: 'node20'
-  main: 'dist/index.js'
-  #post: 'dist/index.js'
+  using: node20
+  main: dist/index.js

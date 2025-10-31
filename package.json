@@ -1,27 +1,31 @@
 {
-  "name": "github-action-template",
+  "name": "upm-release",
   "version": "1.0.0",
-  "description": "A GitHub Actions template repository for TypeScript based Actions.",
+  "description": "A GitHub action to sign and release a upm package.",
   "author": "RageAgainstThePixel",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/RageAgainstThePixel/github-action-template.git"
+    "url": "git+https://github.com/RageAgainstThePixel/upm-release.git"
   },
   "bugs": {
-    "url": "https://github.com/RageAgainstThePixel/github-action-template/issues"
+    "url": "https://github.com/RageAgainstThePixel/upm-release/issues"
   },
-  "homepage": "https://github.com/RageAgainstThePixel/github-action-template",
+  "homepage": "https://github.com/RageAgainstThePixel/upm-release",
   "main": "dist/index.js",
   "keywords": [],
   "dependencies": {
-    "@actions/core": "^1.10.1"
+    "@actions/core": "^1.11.1",
+    "@actions/exec": "^1.1.1",
+    "@actions/github": "^6.0.1",
+    "@actions/glob": "^0.5.0",
+    "@rage-against-the-pixel/unity-cli": "^1.5.3"
   },
   "devDependencies": {
-    "@types/node": "^22.2.0",
+    "@types/node": "^22.18.13",
     "@vercel/ncc": "^0.34.0",
     "shx": "^0.3.4",
-    "typescript": "^5.5.4"
+    "typescript": "^5.9.3"
   },
   "scripts": {
     "build": "npm run clean && npm run bundle",
