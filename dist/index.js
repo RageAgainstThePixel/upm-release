@@ -68309,6 +68309,10 @@ const unity_cli_1 = __nccwpck_require__(4858);
 const main = async () => {
     var _a;
     try {
+        const ref = process.env.GITHUB_REF;
+        if (!ref || !ref.startsWith('refs/tags/')) {
+            throw new Error('This action can only be run from a tagged ref!');
+        }
         const githubToken = core.getInput('github-token', { required: false }) || process.env.GITHUB_TOKEN || undefined;
         if (!githubToken) {
             throw new Error('GitHub token is required to create a release. Please ensure your workflow enables permissions for GITHUB_TOKEN or pass a personal access token.');
@@ -68317,24 +68321,24 @@ const main = async () => {
         const password = core.getInput('password', { required: true });
         const organizationId = core.getInput('organization-id', { required: true });
         let releaseNotes = core.getInput('release-notes', { required: false });
-        await (0, exec_1.exec)('git', ['config', '--global', 'user.name', 'github-actions[bot]']);
-        await (0, exec_1.exec)('git', ['config', '--global', 'user.email', 'github-actions[bot]@users.noreply.github.com']);
-        await (0, exec_1.exec)('git', ['fetch', '--tags', '--force']);
-        const tags = await getTags();
+        await git(['config', '--global', 'user.name', 'github-actions[bot]']);
+        await git(['config', '--global', 'user.email', 'github-actions[bot]@users.noreply.github.com']);
+        await git(['fetch', '--tags', '--force']);
+        await git(['checkout', ref.replace('refs/tags/', '')]);
+        await git(['reset', '--hard', 'HEAD']);
+        await git(['clean', '-ffdx']);
         let packageName = '';
         let packageVersion = '';
-        let packageJsonPath = core.getInput('package-json', { required: false });
-        if (!packageJsonPath) {
-            const globber = await glob.create('**/package.json');
-            const packageJsonFiles = await globber.glob();
-            if (packageJsonFiles.length === 0) {
-                throw new Error('No package.json file found in the working directory or its subdirectories');
-            }
-            if (packageJsonFiles.length > 1) {
-                throw new Error('Multiple package.json files found in the working directory or its subdirectories. Please ensure there is only one package.json file.');
-            }
-            packageJsonPath = packageJsonFiles[0];
+        let packageJsonPath = core.getInput('package-json', { required: false }) || `**/Packages/**/package.json`;
+        const globber = await glob.create(packageJsonPath);
+        const packageJsonFiles = await globber.glob();
+        if (packageJsonFiles.length === 0) {
+            throw new Error('No package.json file found in the working directory or its subdirectories');
         }
+        if (packageJsonFiles.length > 1) {
+            throw new Error('Multiple package.json files found in the working directory or its subdirectories. Please ensure there is only one package.json file.');
+        }
+        packageJsonPath = packageJsonFiles[0];
         if (!packageJsonPath) {
             throw new Error('package.json path is not specified.');
         }
@@ -68352,10 +68356,6 @@ const main = async () => {
         var packageJson = JSON.parse(packageJsonContent);
         packageName = packageJson.name;
         packageVersion = packageJson.version;
-        if (tags.has(`v${packageVersion}`) || tags.has(packageVersion)) {
-            throw new Error(`Tag for ${packageName} ${packageVersion} already exists @ ${tags.get(`v${packageVersion}`) || tags.get(packageVersion)}`);
-        }
-        const lastTag = Array.from(tags.keys()).pop() || '';
         core.info(`Generating release for ${packageName} ${packageVersion}`);
         if (!releaseNotes) {
             const commitSha = process.env.GITHUB_SHA || '';
@@ -68393,6 +68393,8 @@ const main = async () => {
         if (releaseNotes.length > 0) {
             finalReleaseNotes += `\n\n${releaseNotes.split('\n').map(line => `  ${line}`).join('\n')}`;
         }
+        const tags = await getTags();
+        const lastTag = Array.from(tags.keys()).pop() || '';
         if (lastTag.length > 0) {
             finalReleaseNotes += `\n\n**Full Changelog**: https://github.com/${github.context.repo.owner}/${github.context.repo.repo}/compare/${lastTag}...${packageVersion}`;
         }
@@ -68421,17 +68423,14 @@ const main = async () => {
         }
         const signedTgzPath = tgzFiles[0];
         core.info(`Signed package created at ${signedTgzPath}`);
-        await git(['tag', '-a', packageVersion, '-m', `${packageName} ${packageVersion}`]);
-        await git(['push', 'origin', packageVersion]);
         const octokit = github.getOctokit(githubToken, { required: true });
         const { data: release } = await octokit.rest.repos.createRelease({
             owner: github.context.repo.owner,
             repo: github.context.repo.repo,
             tag_name: packageVersion,
             name: `${packageName} ${packageVersion}`,
-            body: finalReleaseNotes,
             generate_release_notes: false,
-            target_commitish: github.context.ref.replace('refs/heads/', ''),
+            body: finalReleaseNotes,
             draft: true
         });
         core.info(`Release created: ${release.html_url}`);
