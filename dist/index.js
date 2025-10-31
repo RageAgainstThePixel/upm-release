@@ -68462,7 +68462,7 @@ const main = async () => {
             repo: github.context.repo.repo,
             release_id: release.id,
             name: path.basename(signedTgzPath),
-            data: fs.readFileSync(signedTgzPath).toString('binary'),
+            data: fs.readFileSync(signedTgzPath),
             headers: {
                 'content-type': 'application/tar+gzip',
                 'content-length': fs.statSync(signedTgzPath).size
