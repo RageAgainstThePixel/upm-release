@@ -68381,7 +68381,10 @@ const main = async () => {
             releaseNotes = commitMessage;
         }
         const releaseNotesLines = releaseNotes.split('\n');
-        const firstLineRegex = new RegExp(`^${packageName}\\s+v?${packageVersion}\\s+#(\\d+)$`);
+        const escapeForRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const pkgNameEsc = escapeForRegExp(packageName);
+        const pkgVerEsc = escapeForRegExp(packageVersion);
+        const firstLineRegex = new RegExp(`^${pkgNameEsc}\\s+v?${pkgVerEsc}\\s*(?:\\(|)\\#(\\d+)(?:\\)|)$`);
         let prNumber = '';
         const firstLineMatch = releaseNotesLines[0].match(firstLineRegex);
         if (firstLineMatch) {
@@ -68411,7 +68414,16 @@ const main = async () => {
         const prInfo = prNumber ? ` in #${prNumber}` : '';
         let finalReleaseNotes = `## What's Changed\n- ${packageName} ${packageVersion} by @${actor}${prInfo}`;
         if (releaseNotes.length > 0) {
-            finalReleaseNotes += `\n\n${releaseNotes.split('\n').map(line => `  ${line}`).join('\n')}`;
+            const formatted = releaseNotes.split('\n').map(line => {
+                const trimmed = line.trimEnd();
+                if (trimmed.length === 0)
+                    return '';
+                if (/^[-]\s+/.test(trimmed)) {
+                    return `  ${trimmed}`;
+                }
+                return `  - ${trimmed}`;
+            }).join('\n');
+            finalReleaseNotes += `\n\n${formatted}`;
         }
         if (lastTag.length > 0) {
             finalReleaseNotes += `\n\n**Full Changelog**: https://github.com/${github.context.repo.owner}/${github.context.repo.repo}/compare/${lastTag}...${packageVersion}`;

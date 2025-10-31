@@ -102,7 +102,12 @@ const main = async () => {
         }
 
         const releaseNotesLines = releaseNotes.split('\n');
-        const firstLineRegex = new RegExp(`^${packageName}\\s+v?${packageVersion}\\s+#(\\d+)$`);
+        // escape packageName and packageVersion for use in RegExp
+        const escapeForRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const pkgNameEsc = escapeForRegExp(packageName);
+        const pkgVerEsc = escapeForRegExp(packageVersion);
+        // allow optional parentheses around the PR number like "(#2)" or "#2"
+        const firstLineRegex = new RegExp(`^${pkgNameEsc}\\s+v?${pkgVerEsc}\\s*(?:\\(|)\\#(\\d+)(?:\\)|)$`);
         let prNumber = '';
         const firstLineMatch = releaseNotesLines[0].match(firstLineRegex);
 
@@ -137,7 +142,17 @@ const main = async () => {
         let finalReleaseNotes = `## What's Changed\n- ${packageName} ${packageVersion} by @${actor}${prInfo}`;
 
         if (releaseNotes.length > 0) {
-            finalReleaseNotes += `\n\n${releaseNotes.split('\n').map(line => `  ${line}`).join('\n')}`;
+            const formatted = releaseNotes.split('\n').map(line => {
+                const trimmed = line.trimEnd();
+                if (trimmed.length === 0) return '';
+                // If the line already starts with a bullet, keep it and indent two spaces before it
+                if (/^[-]\s+/.test(trimmed)) {
+                    return `  ${trimmed}`;
+                }
+                // otherwise add a bullet
+                return `  - ${trimmed}`;
+            }).join('\n');
+            finalReleaseNotes += `\n\n${formatted}`;
         }
 
         if (lastTag.length > 0) {
