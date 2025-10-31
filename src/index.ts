@@ -126,7 +126,11 @@ const main = async () => {
             } catch (error) {
                 core.warning(`Failed to get PR #${prNumber} details: ${error}`);
             }
-            actor = process.env.GITHUB_ACTOR || github.context.actor || '';
+            actor = pr?.user?.login;
+        }
+
+        if (!actor || actor.length === 0) {
+            actor = process.env.GITHUB_ACTOR || github.context.actor;
         }
 
         const prInfo = prNumber ? ` in #${prNumber}` : '';

@@ -68307,6 +68307,7 @@ const glob = __nccwpck_require__(8090);
 const path = __nccwpck_require__(1017);
 const unity_cli_1 = __nccwpck_require__(4858);
 const main = async () => {
+    var _a;
     try {
         const githubToken = core.getInput('github-token', { required: false }) || process.env.GITHUB_TOKEN || undefined;
         if (!githubToken) {
@@ -68402,7 +68403,10 @@ const main = async () => {
             catch (error) {
                 core.warning(`Failed to get PR #${prNumber} details: ${error}`);
             }
-            actor = process.env.GITHUB_ACTOR || github.context.actor || '';
+            actor = (_a = pr === null || pr === void 0 ? void 0 : pr.user) === null || _a === void 0 ? void 0 : _a.login;
+        }
+        if (!actor || actor.length === 0) {
+            actor = process.env.GITHUB_ACTOR || github.context.actor;
         }
         const prInfo = prNumber ? ` in #${prNumber}` : '';
         let finalReleaseNotes = `## What's Changed\n- ${packageName} ${packageVersion} by @${actor}${prInfo}`;
