@@ -40560,14 +40560,6 @@ module.exports = require("fs");
 
 /***/ }),
 
-/***/ 3292:
-/***/ ((module) => {
-
-"use strict";
-module.exports = require("fs/promises");
-
-/***/ }),
-
 /***/ 3685:
 /***/ ((module) => {
 
@@ -68301,7 +68293,7 @@ var exports = __webpack_exports__;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 const core = __nccwpck_require__(2186);
 const exec_1 = __nccwpck_require__(1514);
-const fs = __nccwpck_require__(3292);
+const fs = __nccwpck_require__(7147);
 const github = __nccwpck_require__(5438);
 const glob = __nccwpck_require__(8090);
 const path = __nccwpck_require__(1017);
@@ -68339,16 +68331,16 @@ const main = async () => {
             throw new Error('package.json path is not specified.');
         }
         try {
-            const stat = await fs.stat(packageJsonPath);
+            const stat = await fs.promises.stat(packageJsonPath);
             if (!stat.isFile()) {
                 throw new Error('package.json is not a file.');
             }
-            await fs.access(packageJsonPath, fs.constants.R_OK);
+            await fs.promises.access(packageJsonPath, fs.constants.R_OK);
         }
         catch (error) {
             throw new Error('package.json file not found or is not readable.');
         }
-        var packageJsonContent = await fs.readFile(packageJsonPath, { encoding: 'utf-8' });
+        var packageJsonContent = await fs.promises.readFile(packageJsonPath, { encoding: 'utf-8' });
         var packageJson = JSON.parse(packageJsonContent);
         packageName = packageJson.name;
         packageVersion = packageJson.version;
@@ -68465,19 +68457,15 @@ const main = async () => {
             draft: true
         });
         core.info(`Release created: ${release.html_url}`);
-        const assetName = path.basename(signedTgzPath);
-        const signedBuffer = await fs.readFile(signedTgzPath);
-        const dataString = signedBuffer.toString('binary');
-        const contentLength = Buffer.byteLength(dataString, 'binary');
         const { data: asset } = await octokit.rest.repos.uploadReleaseAsset({
             owner: github.context.repo.owner,
             repo: github.context.repo.repo,
             release_id: release.id,
-            name: assetName,
-            data: dataString,
+            name: path.basename(signedTgzPath),
+            data: fs.readFileSync(signedTgzPath).toString('binary'),
             headers: {
                 'content-type': 'application/tar+gzip',
-                'content-length': contentLength
+                'content-length': fs.statSync(signedTgzPath).size
             }
         });
         core.info(`Release asset uploaded: ${asset.browser_download_url}`);

@@ -1,6 +1,6 @@
 import core = require('@actions/core');
 import { exec } from '@actions/exec';
-import * as fs from 'fs/promises';
+import * as fs from 'fs';
 import * as github from '@actions/github';
 import * as glob from '@actions/glob';
 import * as path from 'path';
@@ -51,18 +51,18 @@ const main = async () => {
         }
 
         try {
-            const stat = await fs.stat(packageJsonPath);
+            const stat = await fs.promises.stat(packageJsonPath);
 
             if (!stat.isFile()) {
                 throw new Error('package.json is not a file.');
             }
 
-            await fs.access(packageJsonPath, fs.constants.R_OK);
+            await fs.promises.access(packageJsonPath, fs.constants.R_OK);
         } catch (error) {
             throw new Error('package.json file not found or is not readable.');
         }
 
-        var packageJsonContent = await fs.readFile(packageJsonPath, { encoding: 'utf-8' });
+        var packageJsonContent = await fs.promises.readFile(packageJsonPath, { encoding: 'utf-8' });
         var packageJson = JSON.parse(packageJsonContent);
         packageName = packageJson.name;
         packageVersion = packageJson.version;
@@ -189,8 +189,8 @@ const main = async () => {
         }
 
         const signedTgzPath = tgzFiles[0];
-
         core.info(`Signed package created at ${signedTgzPath}`);
+
         const { data: release } = await octokit.rest.repos.createRelease({
             owner: github.context.repo.owner,
             repo: github.context.repo.repo,
@@ -201,21 +201,17 @@ const main = async () => {
             target_commitish: commitish,
             draft: true
         });
-
         core.info(`Release created: ${release.html_url}`);
-        const assetName = path.basename(signedTgzPath);
-        const signedBuffer = await fs.readFile(signedTgzPath);
-        const dataString = signedBuffer.toString('binary');
-        const contentLength = Buffer.byteLength(dataString, 'binary');
+
         const { data: asset } = await octokit.rest.repos.uploadReleaseAsset({
             owner: github.context.repo.owner,
             repo: github.context.repo.repo,
             release_id: release.id,
-            name: assetName,
-            data: dataString,
+            name: path.basename(signedTgzPath),
+            data: fs.readFileSync(signedTgzPath).toString('binary'),
             headers: {
                 'content-type': 'application/tar+gzip',
-                'content-length': contentLength
+                'content-length': fs.statSync(signedTgzPath).size
             }
         });
 
