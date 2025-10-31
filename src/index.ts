@@ -138,7 +138,7 @@ const main = async () => {
             }
 
             const prInfo = prNumber ? ` in #${prNumber}` : '';
-            let finalReleaseNotes = `## What's Changed\n- ${packageName} ${packageVersion} by @${actor}${prInfo}`;
+            let finalReleaseNotes = `## What's Changed\n- ${packageName} ${packageVersion} by @${actor}${prInfo}\n`;
 
             if (releaseNotes.length > 0) {
                 const formatted = releaseNotes.split('\n').map(line => {
@@ -151,7 +151,7 @@ const main = async () => {
                     // otherwise add a bullet
                     return `  - ${trimmed}`;
                 }).join('\n');
-                finalReleaseNotes += `\n\n${formatted}`;
+                finalReleaseNotes += formatted;
             }
 
             if (lastTag.length > 0) {
