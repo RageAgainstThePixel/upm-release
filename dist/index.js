@@ -68402,7 +68402,7 @@ const main = async () => {
             catch (error) {
                 core.warning(`Failed to get PR #${prNumber} details: ${error}`);
             }
-            actor = github.context.actor || process.env.GITHUB_ACTOR || '';
+            actor = process.env.GITHUB_ACTOR || github.context.actor || '';
         }
         const prInfo = prNumber ? ` in #${prNumber}` : '';
         let finalReleaseNotes = `## What's Changed\n- ${packageName} ${packageVersion} by @${actor}${prInfo}`;
@@ -68416,9 +68416,9 @@ const main = async () => {
             finalReleaseNotes += `\n\n**Full Changelog**: https://github.com/${github.context.repo.owner}/${github.context.repo.repo}/commits/${packageVersion}`;
         }
         core.info(`Release Notes:\n${finalReleaseNotes}`);
-        const unityVersion = new unity_cli_1.UnityVersion('6000.3');
         const unityHub = new unity_cli_1.UnityHub();
         await unityHub.Install(true, undefined);
+        const unityVersion = new unity_cli_1.UnityVersion('6000.3');
         const unityEditor = await unityHub.GetEditor(unityVersion, undefined, ['f', 'b']);
         const outputDir = process.env.RUNNER_TEMP;
         await unityEditor.Run({
