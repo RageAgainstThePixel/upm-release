@@ -11,11 +11,6 @@ import {
 
 const main = async () => {
     try {
-        const ref = process.env.GITHUB_REF;
-        if (!ref || !ref.startsWith('refs/tags/')) {
-            throw new Error('This action can only be run from a tagged ref!');
-        }
-
         const githubToken = core.getInput('github-token', { required: false }) || process.env.GITHUB_TOKEN || undefined;
 
         if (!githubToken) {
@@ -30,11 +25,6 @@ const main = async () => {
         await git(['config', '--global', 'user.name', 'github-actions[bot]']);
         await git(['config', '--global', 'user.email', 'github-actions[bot]@users.noreply.github.com']);
         await git(['fetch', '--tags', '--force']);
-        // since we are on the repo default branch, we need to checkout the tag ref
-        await git(['checkout', ref.replace('refs/tags/', '')]);
-        // clean any local changes just in case
-        await git(['reset', '--hard', 'HEAD']);
-        await git(['clean', '-ffdx']);
 
         let packageName = '';
         let packageVersion = '';
@@ -52,6 +42,8 @@ const main = async () => {
         }
 
         packageJsonPath = packageJsonFiles[0];
+        const packageDir = path.dirname(packageJsonPath);
+        core.info(`Package directory: ${packageDir}`);
 
         if (!packageJsonPath) {
             throw new Error('package.json path is not specified.');
@@ -74,7 +66,28 @@ const main = async () => {
         packageName = packageJson.name;
         packageVersion = packageJson.version;
 
-        core.info(`Generating release for ${packageName} ${packageVersion}`);
+        const tags = await getTags();
+        const lastTag = Array.from(tags.keys()).pop() || '';
+
+        if (lastTag === `v${packageVersion}` || lastTag === packageVersion) {
+            throw new Error(`Tag for ${packageName} ${packageVersion} already exists. Please ensure the package version is updated for a new release.`);
+        }
+
+        core.info(`Generating release for ${packageName} ${packageVersion}...`);
+
+        const splitUpmBranch = core.getInput('split-upm-branch', { required: false }) || 'upm';
+        const split = splitUpmBranch.toLowerCase() !== 'none';
+        let commitish = '';
+
+        if (split) {
+            await git(['subtree', 'split', '--prefix', packageDir, '-b', splitUpmBranch]);
+            await git(['push', '-u', 'origin', splitUpmBranch, '--force']);
+            commitish = await git(['rev-parse', splitUpmBranch]);
+        } else {
+            commitish = github.context.sha || await git(['rev-parse', 'HEAD']);
+        }
+
+        core.info(`Using target commit ${commitish} for the release.`);
 
         if (!releaseNotes) {
             const commitSha: string = process.env.GITHUB_SHA || '';
@@ -118,9 +131,6 @@ const main = async () => {
             finalReleaseNotes += `\n\n${releaseNotes.split('\n').map(line => `  ${line}`).join('\n')}`;
         }
 
-        const tags = await getTags();
-        const lastTag = Array.from(tags.keys()).pop() || '';
-
         if (lastTag.length > 0) {
             finalReleaseNotes += `\n\n**Full Changelog**: https://github.com/${github.context.repo.owner}/${github.context.repo.repo}/compare/${lastTag}...${packageVersion}`;
         } else {
@@ -133,7 +143,6 @@ const main = async () => {
         const unityVersion = new UnityVersion('6000.3');
         const unityHub = new UnityHub();
         const unityEditor = await unityHub.GetEditor(unityVersion, undefined, ['f', 'b']);
-        const packageDir = path.dirname(packageJsonPath);
         const outputDir = process.env.RUNNER_TEMP;
 
         await unityEditor.Run({
@@ -164,6 +173,7 @@ const main = async () => {
             name: `${packageName} ${packageVersion}`,
             generate_release_notes: false,
             body: finalReleaseNotes,
+            target_commitish: commitish,
             draft: true
         });
 

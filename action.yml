@@ -22,6 +22,10 @@ inputs:
   github-token:
     description: GitHub token to create releases and upload assets. Defaults to the GITHUB_TOKEN secret, but may be required if permissions are not set correctly or the repository is private.
     required: false
+  split-upm-branch:
+    description: Optional branch name if the package release tag should be pushed to a different branch than the default branch. Pass 'none' to disable the subtree split.
+    required: false
+    default: 'upm'
 runs:
   using: node20
   main: dist/index.js

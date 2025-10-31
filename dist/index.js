@@ -68309,10 +68309,6 @@ const unity_cli_1 = __nccwpck_require__(4858);
 const main = async () => {
     var _a;
     try {
-        const ref = process.env.GITHUB_REF;
-        if (!ref || !ref.startsWith('refs/tags/')) {
-            throw new Error('This action can only be run from a tagged ref!');
-        }
         const githubToken = core.getInput('github-token', { required: false }) || process.env.GITHUB_TOKEN || undefined;
         if (!githubToken) {
             throw new Error('GitHub token is required to create a release. Please ensure your workflow enables permissions for GITHUB_TOKEN or pass a personal access token.');
@@ -68324,9 +68320,6 @@ const main = async () => {
         await git(['config', '--global', 'user.name', 'github-actions[bot]']);
         await git(['config', '--global', 'user.email', 'github-actions[bot]@users.noreply.github.com']);
         await git(['fetch', '--tags', '--force']);
-        await git(['checkout', ref.replace('refs/tags/', '')]);
-        await git(['reset', '--hard', 'HEAD']);
-        await git(['clean', '-ffdx']);
         let packageName = '';
         let packageVersion = '';
         let packageJsonPath = core.getInput('package-json', { required: false }) || `**/Packages/**/package.json`;
@@ -68339,6 +68332,8 @@ const main = async () => {
             throw new Error('Multiple package.json files found in the working directory or its subdirectories. Please ensure there is only one package.json file.');
         }
         packageJsonPath = packageJsonFiles[0];
+        const packageDir = path.dirname(packageJsonPath);
+        core.info(`Package directory: ${packageDir}`);
         if (!packageJsonPath) {
             throw new Error('package.json path is not specified.');
         }
@@ -68356,7 +68351,24 @@ const main = async () => {
         var packageJson = JSON.parse(packageJsonContent);
         packageName = packageJson.name;
         packageVersion = packageJson.version;
-        core.info(`Generating release for ${packageName} ${packageVersion}`);
+        const tags = await getTags();
+        const lastTag = Array.from(tags.keys()).pop() || '';
+        if (lastTag === `v${packageVersion}` || lastTag === packageVersion) {
+            throw new Error(`Tag for ${packageName} ${packageVersion} already exists. Please ensure the package version is updated for a new release.`);
+        }
+        core.info(`Generating release for ${packageName} ${packageVersion}...`);
+        const splitUpmBranch = core.getInput('split-upm-branch', { required: false }) || 'upm';
+        const split = splitUpmBranch.toLowerCase() !== 'none';
+        let commitish = '';
+        if (split) {
+            await git(['subtree', 'split', '--prefix', packageDir, '-b', splitUpmBranch]);
+            await git(['push', '-u', 'origin', splitUpmBranch, '--force']);
+            commitish = await git(['rev-parse', splitUpmBranch]);
+        }
+        else {
+            commitish = github.context.sha || await git(['rev-parse', 'HEAD']);
+        }
+        core.info(`Using target commit ${commitish} for the release.`);
         if (!releaseNotes) {
             const commitSha = process.env.GITHUB_SHA || '';
             const commitMessage = (await git(['log', '-1', '--pretty=%B', commitSha])).trim();
@@ -68393,8 +68405,6 @@ const main = async () => {
         if (releaseNotes.length > 0) {
             finalReleaseNotes += `\n\n${releaseNotes.split('\n').map(line => `  ${line}`).join('\n')}`;
         }
-        const tags = await getTags();
-        const lastTag = Array.from(tags.keys()).pop() || '';
         if (lastTag.length > 0) {
             finalReleaseNotes += `\n\n**Full Changelog**: https://github.com/${github.context.repo.owner}/${github.context.repo.repo}/compare/${lastTag}...${packageVersion}`;
         }
@@ -68405,7 +68415,6 @@ const main = async () => {
         const unityVersion = new unity_cli_1.UnityVersion('6000.3');
         const unityHub = new unity_cli_1.UnityHub();
         const unityEditor = await unityHub.GetEditor(unityVersion, undefined, ['f', 'b']);
-        const packageDir = path.dirname(packageJsonPath);
         const outputDir = process.env.RUNNER_TEMP;
         await unityEditor.Run({
             args: [
@@ -68431,6 +68440,7 @@ const main = async () => {
             name: `${packageName} ${packageVersion}`,
             generate_release_notes: false,
             body: finalReleaseNotes,
+            target_commitish: commitish,
             draft: true
         });
         core.info(`Release created: ${release.html_url}`);
