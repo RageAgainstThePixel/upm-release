@@ -1,5 +1,8 @@
 name: upm-release
 description: A GitHub action to sign and release a upm package.
+branding:
+  icon: gift
+  color: blue
 inputs:
   username:
     description: The username for the Unity account.
