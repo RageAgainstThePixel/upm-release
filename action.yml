@@ -1,0 +1,8 @@
+name: github-action-template
+description: 'A GitHub Actions template repository for TypeScript based Actions'
+# inputs:
+# outputs:
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
+  #post: 'dist/index.js'

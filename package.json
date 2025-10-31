@@ -1,0 +1,31 @@
+{
+  "name": "github-action-template",
+  "version": "1.0.0",
+  "description": "A GitHub Actions template repository for TypeScript based Actions.",
+  "author": "RageAgainstThePixel",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RageAgainstThePixel/github-action-template.git"
+  },
+  "bugs": {
+    "url": "https://github.com/RageAgainstThePixel/github-action-template/issues"
+  },
+  "homepage": "https://github.com/RageAgainstThePixel/github-action-template",
+  "main": "dist/index.js",
+  "keywords": [],
+  "dependencies": {
+    "@actions/core": "^1.10.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.2.0",
+    "@vercel/ncc": "^0.34.0",
+    "shx": "^0.3.4",
+    "typescript": "^5.5.4"
+  },
+  "scripts": {
+    "build": "npm run clean && npm run bundle",
+    "bundle": "ncc build src/index.ts -o dist --source-map --license licenses.txt",
+    "clean": "npm install && shx rm -rf dist/ out/ node_modules/ && npm ci"
+  }
+}
