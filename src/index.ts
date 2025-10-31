@@ -85,12 +85,12 @@ const main = async () => {
             const relativeWorkspace = packageDir.replace(workspace, '').replace(/^[\/\\]/, '');
             await git(['subtree', 'split', '--prefix', relativeWorkspace, '-b', splitUpmBranch]);
             await git(['push', '-u', 'origin', splitUpmBranch, '--force']);
-            commitish = await git(['rev-parse', splitUpmBranch]);
+            commitish = (await git(['rev-parse', splitUpmBranch])).trim();
             await git(['checkout', splitUpmBranch]);
             packageJsonPath = path.join(workspace, 'package.json');
             packageDir = workspace;
         } else {
-            commitish = github.context.sha || await git(['rev-parse', 'HEAD']);
+            commitish = (github.context.sha || await git(['rev-parse', 'HEAD'])).trim();
         }
 
         core.info(`Using target commit ${commitish} for the release.`);
@@ -126,7 +126,7 @@ const main = async () => {
             } catch (error) {
                 core.warning(`Failed to get PR #${prNumber} details: ${error}`);
             }
-            actor = pr?.user?.login || github.context.actor || process.env.GITHUB_ACTOR || '';
+            actor = github.context.actor || process.env.GITHUB_ACTOR || '';
         }
 
         const prInfo = prNumber ? ` in #${prNumber}` : '';
@@ -144,9 +144,10 @@ const main = async () => {
 
         core.info(`Release Notes:\n${finalReleaseNotes}`);
 
+        const unityHub = new UnityHub();
+        await unityHub.Install(true, undefined);
         // must use a unity editor 6000.3 or newer
         const unityVersion = new UnityVersion('6000.3');
-        const unityHub = new UnityHub();
         const unityEditor = await unityHub.GetEditor(unityVersion, undefined, ['f', 'b']);
         const outputDir = process.env.RUNNER_TEMP;
 

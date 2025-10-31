@@ -68307,7 +68307,6 @@ const glob = __nccwpck_require__(8090);
 const path = __nccwpck_require__(1017);
 const unity_cli_1 = __nccwpck_require__(4858);
 const main = async () => {
-    var _a;
     try {
         const githubToken = core.getInput('github-token', { required: false }) || process.env.GITHUB_TOKEN || undefined;
         if (!githubToken) {
@@ -68366,13 +68365,13 @@ const main = async () => {
             const relativeWorkspace = packageDir.replace(workspace, '').replace(/^[\/\\]/, '');
             await git(['subtree', 'split', '--prefix', relativeWorkspace, '-b', splitUpmBranch]);
             await git(['push', '-u', 'origin', splitUpmBranch, '--force']);
-            commitish = await git(['rev-parse', splitUpmBranch]);
+            commitish = (await git(['rev-parse', splitUpmBranch])).trim();
             await git(['checkout', splitUpmBranch]);
             packageJsonPath = path.join(workspace, 'package.json');
             packageDir = workspace;
         }
         else {
-            commitish = github.context.sha || await git(['rev-parse', 'HEAD']);
+            commitish = (github.context.sha || await git(['rev-parse', 'HEAD'])).trim();
         }
         core.info(`Using target commit ${commitish} for the release.`);
         if (!releaseNotes) {
@@ -68403,7 +68402,7 @@ const main = async () => {
             catch (error) {
                 core.warning(`Failed to get PR #${prNumber} details: ${error}`);
             }
-            actor = ((_a = pr === null || pr === void 0 ? void 0 : pr.user) === null || _a === void 0 ? void 0 : _a.login) || github.context.actor || process.env.GITHUB_ACTOR || '';
+            actor = github.context.actor || process.env.GITHUB_ACTOR || '';
         }
         const prInfo = prNumber ? ` in #${prNumber}` : '';
         let finalReleaseNotes = `## What's Changed\n- ${packageName} ${packageVersion} by @${actor}${prInfo}`;
@@ -68419,6 +68418,7 @@ const main = async () => {
         core.info(`Release Notes:\n${finalReleaseNotes}`);
         const unityVersion = new unity_cli_1.UnityVersion('6000.3');
         const unityHub = new unity_cli_1.UnityHub();
+        await unityHub.Install(true, undefined);
         const unityEditor = await unityHub.GetEditor(unityVersion, undefined, ['f', 'b']);
         const outputDir = process.env.RUNNER_TEMP;
         await unityEditor.Run({
