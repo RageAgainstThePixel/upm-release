@@ -273,5 +273,3 @@ async function git(params: string[], warnOnError: boolean = false): Promise<stri
     }
     return output;
 }
-
-// uploadBufferToUrl removed: using octokit.rest.repos.uploadReleaseAsset with ReadStream instead.
