@@ -68310,9 +68310,17 @@ const main = async () => {
         const password = core.getInput('password', { required: true });
         const organizationId = core.getInput('organization-id', { required: true });
         let releaseNotes = core.getInput('release-notes', { required: false });
-        await git(['config', 'user.name', 'github-actions[bot]']);
-        await git(['config', 'user.email', 'github-actions[bot]@users.noreply.github.com']);
-        await git(['fetch', '--tags', '--force']);
+        let tags = new Map();
+        core.startGroup(`Setting up git...`);
+        try {
+            await git(['config', 'user.name', 'github-actions[bot]']);
+            await git(['config', 'user.email', 'github-actions[bot]@users.noreply.github.com']);
+            await git(['fetch', '--tags', '--force']);
+            tags = await getTags();
+        }
+        finally {
+            core.endGroup();
+        }
         let packageName = '';
         let packageVersion = '';
         let packageJsonPath = core.getInput('package-json', { required: false }) || `**/Packages/**/package.json`;
@@ -68345,7 +68353,6 @@ const main = async () => {
         packageName = packageJson.name;
         packageVersion = packageJson.version;
         const isPreview = packageJson.version.includes('-pre');
-        const tags = await getTags();
         const lastTag = Array.from(tags.keys()).pop() || '';
         if (tags.has(packageVersion)) {
             throw new Error(`Tag for ${packageName} ${packageVersion} already exists. Please ensure the package version is updated for a new release.`);
@@ -68355,14 +68362,32 @@ const main = async () => {
         const split = splitUpmBranch.toLowerCase() !== 'none';
         let commitish = '';
         if (split) {
-            const workspace = process.env.GITHUB_WORKSPACE;
-            const relativeWorkspace = packageDir.replace(workspace, '').replace(/^[\/\\]/, '');
-            await git(['subtree', 'split', '--prefix', relativeWorkspace, '-b', splitUpmBranch]);
-            await git(['push', '-u', 'origin', splitUpmBranch, '--force']);
-            commitish = (await git(['rev-parse', splitUpmBranch])).trim();
-            await git(['checkout', commitish]);
-            packageJsonPath = path.join(workspace, 'package.json');
-            packageDir = workspace;
+            core.startGroup(`UPM Subtree Split`);
+            try {
+                const workspace = process.env.GITHUB_WORKSPACE;
+                const relativeWorkspace = packageDir.replace(workspace, '').replace(/^[\/\\]/, '');
+                const tempSplitBranch = `${splitUpmBranch}-split-${Date.now()}`;
+                await git(['subtree', 'split', '--prefix', relativeWorkspace, '-b', tempSplitBranch]);
+                const lsRemote = await git(['ls-remote', '--heads', 'origin', splitUpmBranch], true);
+                const remoteExists = lsRemote.trim().length > 0;
+                if (remoteExists) {
+                    await git(['fetch', 'origin', splitUpmBranch]);
+                    await git(['checkout', '-B', splitUpmBranch, `origin/${splitUpmBranch}`]);
+                    await git(['merge', '--allow-unrelated-histories', '--no-edit', tempSplitBranch]);
+                }
+                else {
+                    await git(['checkout', '-B', splitUpmBranch, tempSplitBranch]);
+                }
+                await git(['push', '-u', 'origin', splitUpmBranch]);
+                commitish = (await git(['rev-parse', splitUpmBranch])).trim();
+                await git(['checkout', commitish]);
+                packageDir = workspace;
+                packageJsonPath = path.join(packageDir, 'package.json');
+                await git(['branch', '-D', tempSplitBranch]);
+            }
+            finally {
+                core.endGroup();
+            }
         }
         else {
             commitish = (github.context.sha || await git(['rev-parse', 'HEAD'])).trim();
@@ -68506,7 +68531,11 @@ async function git(params, warnOnError = false) {
         }
     });
     if (exitCode !== 0) {
-        throw new Error(error);
+        if (warnOnError) {
+            core.warning(`git ${params.join(' ')} exited ${exitCode}: ${error}`);
+            return output + error;
+        }
+        throw new Error(error || `git ${params.join(' ')} exited with code ${exitCode}`);
     }
     if (error && warnOnError) {
         core.warning(error);

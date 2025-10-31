@@ -22,10 +22,17 @@ const main = async () => {
         const password: string = core.getInput('password', { required: true });
         const organizationId: string = core.getInput('organization-id', { required: true });
         let releaseNotes: string = core.getInput('release-notes', { required: false });
+        let tags: Map<string, string> = new Map<string, string>();
 
-        await git(['config', 'user.name', 'github-actions[bot]']);
-        await git(['config', 'user.email', 'github-actions[bot]@users.noreply.github.com']);
-        await git(['fetch', '--tags', '--force']);
+        core.startGroup(`Setting up git...`);
+        try {
+            await git(['config', 'user.name', 'github-actions[bot]']);
+            await git(['config', 'user.email', 'github-actions[bot]@users.noreply.github.com']);
+            await git(['fetch', '--tags', '--force']);
+            tags = await getTags();
+        } finally {
+            core.endGroup();
+        }
 
         let packageName = '';
         let packageVersion = '';
@@ -68,7 +75,6 @@ const main = async () => {
         packageVersion = packageJson.version;
         const isPreview = packageJson.version.includes('-pre');
 
-        const tags = await getTags();
         const lastTag = Array.from(tags.keys()).pop() || '';
 
         if (tags.has(packageVersion)) {
@@ -82,14 +88,46 @@ const main = async () => {
         let commitish = '';
 
         if (split) {
-            const workspace = process.env.GITHUB_WORKSPACE;
-            const relativeWorkspace = packageDir.replace(workspace, '').replace(/^[\/\\]/, '');
-            await git(['subtree', 'split', '--prefix', relativeWorkspace, '-b', splitUpmBranch]);
-            await git(['push', '-u', 'origin', splitUpmBranch, '--force']);
-            commitish = (await git(['rev-parse', splitUpmBranch])).trim();
-            await git(['checkout', commitish]);
-            packageJsonPath = path.join(workspace, 'package.json');
-            packageDir = workspace;
+            core.startGroup(`UPM Subtree Split`);
+            try {
+                const workspace = process.env.GITHUB_WORKSPACE;
+                const relativeWorkspace = packageDir.replace(workspace, '').replace(/^[\/\\]/, '');
+
+                const tempSplitBranch = `${splitUpmBranch}-split-${Date.now()}`;
+                await git(['subtree', 'split', '--prefix', relativeWorkspace, '-b', tempSplitBranch]);
+
+                // Check if remote branch exists without throwing
+                const lsRemote = await git(['ls-remote', '--heads', 'origin', splitUpmBranch], true);
+                const remoteExists = lsRemote.trim().length > 0;
+
+                if (remoteExists) {
+                    // Fetch the remote branch and create/update a local branch tracking it
+                    await git(['fetch', 'origin', splitUpmBranch]);
+                    await git(['checkout', '-B', splitUpmBranch, `origin/${splitUpmBranch}`]);
+
+                    // Merge the split into the existing upm branch. Allow unrelated histories because subtree splits
+                    // may have different roots when created independently. This will preserve the remote history and
+                    // append the new split commit(s) on top.
+                    await git(['merge', '--allow-unrelated-histories', '--no-edit', tempSplitBranch]);
+                } else {
+                    // No remote branch exists yet: create local branch from the split
+                    await git(['checkout', '-B', splitUpmBranch, tempSplitBranch]);
+                }
+
+                // Push the branch to origin without force to avoid rewriting remote history.
+                // If push is rejected due to a race, let it error so the action can be retried safely.
+                await git(['push', '-u', 'origin', splitUpmBranch]);
+
+                commitish = (await git(['rev-parse', splitUpmBranch])).trim();
+                await git(['checkout', commitish]);
+
+                packageDir = workspace;
+                packageJsonPath = path.join(packageDir, 'package.json');
+
+                await git(['branch', '-D', tempSplitBranch]);
+            } finally {
+                core.endGroup();
+            }
         } else {
             commitish = (github.context.sha || await git(['rev-parse', 'HEAD'])).trim();
         }
@@ -271,7 +309,12 @@ async function git(params: string[], warnOnError: boolean = false): Promise<stri
         }
     });
     if (exitCode !== 0) {
-        throw new Error(error);
+        if (warnOnError) {
+            // warn and return combined output
+            core.warning(`git ${params.join(' ')} exited ${exitCode}: ${error}`);
+            return output + error;
+        }
+        throw new Error(error || `git ${params.join(' ')} exited with code ${exitCode}`);
     }
     if (error && warnOnError) {
         core.warning(error);
