@@ -9,7 +9,7 @@ When the action runs, it will:
 1. Check out the repository.
 1. Read the `package.json` file to get the package name and version.
 1. Tag the repository with the package version, and optionally perform a subtree split to a specified branch (upm by default).
-1. Sign the package using the `unity-cli` tool.
+1. Sign the package using [`unity-cli`](https://github.com/RageAgainstThePixel/unity-cli).
 1. Create a draft GitHub release with the signed package artifact on the subtree split branch (or default branch if subtree split is disabled).
 
 > [!IMPORTANT]
