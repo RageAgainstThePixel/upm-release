@@ -11,7 +11,7 @@ inputs:
     description: The organization ID for the Unity account.
     required: true
   package-json:
-    description: Path to the package.json file. Defaults to searching in the repository root for package.json.
+    description: Path to the package.json file. Defaults to `**/Packages/**/package.json` glob search.
     required: false
   release-title:
     description: Optional title for the release.

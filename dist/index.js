@@ -68313,12 +68313,13 @@ const main = async () => {
         if (!githubToken) {
             throw new Error('GitHub token is required to create a release. Please ensure your workflow enables permissions for GITHUB_TOKEN or pass a personal access token.');
         }
+        const octokit = github.getOctokit(githubToken);
         const username = core.getInput('username', { required: true });
         const password = core.getInput('password', { required: true });
         const organizationId = core.getInput('organization-id', { required: true });
         let releaseNotes = core.getInput('release-notes', { required: false });
-        await git(['config', '--global', 'user.name', 'github-actions[bot]']);
-        await git(['config', '--global', 'user.email', 'github-actions[bot]@users.noreply.github.com']);
+        await git(['config', 'user.name', 'github-actions[bot]']);
+        await git(['config', 'user.email', 'github-actions[bot]@users.noreply.github.com']);
         await git(['fetch', '--tags', '--force']);
         let packageName = '';
         let packageVersion = '';
@@ -68353,7 +68354,7 @@ const main = async () => {
         packageVersion = packageJson.version;
         const tags = await getTags();
         const lastTag = Array.from(tags.keys()).pop() || '';
-        if (lastTag === `v${packageVersion}` || lastTag === packageVersion) {
+        if (tags.has(packageVersion)) {
             throw new Error(`Tag for ${packageName} ${packageVersion} already exists. Please ensure the package version is updated for a new release.`);
         }
         core.info(`Generating release for ${packageName} ${packageVersion}...`);
@@ -68387,7 +68388,6 @@ const main = async () => {
         if (prNumber.length > 0) {
             let pr = null;
             try {
-                const octokit = github.getOctokit(githubToken, { required: true });
                 const { data } = await octokit.rest.pulls.get({
                     owner: github.context.repo.owner,
                     repo: github.context.repo.repo,
@@ -68432,7 +68432,6 @@ const main = async () => {
         }
         const signedTgzPath = tgzFiles[0];
         core.info(`Signed package created at ${signedTgzPath}`);
-        const octokit = github.getOctokit(githubToken, { required: true });
         const { data: release } = await octokit.rest.repos.createRelease({
             owner: github.context.repo.owner,
             repo: github.context.repo.repo,
