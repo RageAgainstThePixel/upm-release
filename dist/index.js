@@ -68431,7 +68431,9 @@ const main = async () => {
         else {
             finalReleaseNotes += `\n\n**Full Changelog**: https://github.com/${github.context.repo.owner}/${github.context.repo.repo}/commits/${packageVersion}`;
         }
-        core.info(`Release Notes:\n${finalReleaseNotes}`);
+        core.startGroup(`----- Release Notes -----`);
+        core.info(finalReleaseNotes);
+        core.endGroup();
         const unityHub = new unity_cli_1.UnityHub();
         await unityHub.Install(true, undefined);
         const unityVersion = new unity_cli_1.UnityVersion('6000.3');

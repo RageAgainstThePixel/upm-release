@@ -161,7 +161,9 @@ const main = async () => {
             finalReleaseNotes += `\n\n**Full Changelog**: https://github.com/${github.context.repo.owner}/${github.context.repo.repo}/commits/${packageVersion}`;
         }
 
-        core.info(`Release Notes:\n${finalReleaseNotes}`);
+        core.startGroup(`----- Release Notes -----`);
+        core.info(finalReleaseNotes);
+        core.endGroup();
 
         const unityHub = new UnityHub();
         await unityHub.Install(true, undefined);
