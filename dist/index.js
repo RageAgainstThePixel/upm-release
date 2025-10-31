@@ -68403,7 +68403,7 @@ const main = async () => {
                 actor = process.env.GITHUB_ACTOR || github.context.actor;
             }
             const prInfo = prNumber ? ` in #${prNumber}` : '';
-            let finalReleaseNotes = `## What's Changed\n- ${packageName} ${packageVersion} by @${actor}${prInfo}`;
+            let finalReleaseNotes = `## What's Changed\n- ${packageName} ${packageVersion} by @${actor}${prInfo}\n`;
             if (releaseNotes.length > 0) {
                 const formatted = releaseNotes.split('\n').map(line => {
                     const trimmed = line.trimEnd();
@@ -68414,7 +68414,7 @@ const main = async () => {
                     }
                     return `  - ${trimmed}`;
                 }).join('\n');
-                finalReleaseNotes += `\n\n${formatted}`;
+                finalReleaseNotes += formatted;
             }
             if (lastTag.length > 0) {
                 finalReleaseNotes += `\n\n**Full Changelog**: https://github.com/${github.context.repo.owner}/${github.context.repo.repo}/compare/${lastTag}...${packageVersion}`;
