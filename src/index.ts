@@ -43,7 +43,7 @@ const main = async () => {
         }
 
         packageJsonPath = packageJsonFiles[0];
-        const packageDir = path.dirname(packageJsonPath);
+        let packageDir = path.dirname(packageJsonPath);
         core.info(`Package directory: ${packageDir}`);
 
         if (!packageJsonPath) {
@@ -81,9 +81,14 @@ const main = async () => {
         let commitish = '';
 
         if (split) {
-            await git(['subtree', 'split', '--prefix', packageDir, '-b', splitUpmBranch]);
+            const workspace = process.env.GITHUB_WORKSPACE;
+            const relativeWorkspace = packageDir.replace(workspace, '').replace(/^[\/\\]/, '');
+            await git(['subtree', 'split', '--prefix', relativeWorkspace, '-b', splitUpmBranch]);
             await git(['push', '-u', 'origin', splitUpmBranch, '--force']);
             commitish = await git(['rev-parse', splitUpmBranch]);
+            await git(['checkout', splitUpmBranch]);
+            packageJsonPath = path.join(workspace, 'package.json');
+            packageDir = workspace;
         } else {
             commitish = github.context.sha || await git(['rev-parse', 'HEAD']);
         }
