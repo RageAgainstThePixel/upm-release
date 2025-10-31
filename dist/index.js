@@ -68452,15 +68452,19 @@ const main = async () => {
             draft: true
         });
         core.info(`Release created: ${release.html_url}`);
+        const assetName = path.basename(signedTgzPath);
+        const signedBuffer = await fs.readFile(signedTgzPath);
+        const dataString = signedBuffer.toString('binary');
+        const contentLength = Buffer.byteLength(dataString, 'binary');
         const { data: asset } = await octokit.rest.repos.uploadReleaseAsset({
             owner: github.context.repo.owner,
             repo: github.context.repo.repo,
             release_id: release.id,
-            name: path.basename(signedTgzPath),
-            data: signedTgzPath,
+            name: assetName,
+            data: dataString,
             headers: {
                 'content-type': 'application/tar+gzip',
-                'content-length': (await fs.stat(signedTgzPath)).size
+                'content-length': contentLength
             }
         });
         core.info(`Release asset uploaded: ${asset.browser_download_url}`);
@@ -68483,7 +68487,7 @@ async function getTags() {
 async function getParentSha(ref) {
     return (await git(['rev-parse', '--verify', `${ref}^{}`])).trim();
 }
-async function git(params, warnOnError = true) {
+async function git(params, warnOnError = false) {
     let output = '';
     let error = '';
     const exitCode = await (0, exec_1.exec)('git', params, {

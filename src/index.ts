@@ -187,15 +187,19 @@ const main = async () => {
         });
 
         core.info(`Release created: ${release.html_url}`);
+        const assetName = path.basename(signedTgzPath);
+        const signedBuffer = await fs.readFile(signedTgzPath);
+        const dataString = signedBuffer.toString('binary');
+        const contentLength = Buffer.byteLength(dataString, 'binary');
         const { data: asset } = await octokit.rest.repos.uploadReleaseAsset({
             owner: github.context.repo.owner,
             repo: github.context.repo.repo,
             release_id: release.id,
-            name: path.basename(signedTgzPath),
-            data: signedTgzPath,
+            name: assetName,
+            data: dataString,
             headers: {
                 'content-type': 'application/tar+gzip',
-                'content-length': (await fs.stat(signedTgzPath)).size
+                'content-length': contentLength
             }
         });
 
@@ -236,7 +240,7 @@ async function getParentSha(ref: string): Promise<string> {
  * @param params Git command parameters
  * @returns Git command output
  */
-async function git(params: string[], warnOnError: boolean = true): Promise<string> {
+async function git(params: string[], warnOnError: boolean = false): Promise<string> {
     let output: string = '';
     let error: string = '';
     const exitCode = await exec('git', params, {
@@ -257,3 +261,5 @@ async function git(params: string[], warnOnError: boolean = true): Promise<strin
     }
     return output;
 }
+
+// uploadBufferToUrl removed: using octokit.rest.repos.uploadReleaseAsset with ReadStream instead.
