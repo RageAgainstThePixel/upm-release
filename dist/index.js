@@ -68367,7 +68367,7 @@ const main = async () => {
             await git(['subtree', 'split', '--prefix', relativeWorkspace, '-b', splitUpmBranch]);
             await git(['push', '-u', 'origin', splitUpmBranch, '--force']);
             commitish = (await git(['rev-parse', splitUpmBranch])).trim();
-            await git(['checkout', splitUpmBranch]);
+            await git(['checkout', commitish]);
             packageJsonPath = path.join(workspace, 'package.json');
             packageDir = workspace;
         }
@@ -68376,8 +68376,7 @@ const main = async () => {
         }
         core.info(`Using target commit ${commitish} for the release.`);
         if (!releaseNotes) {
-            const commitSha = process.env.GITHUB_SHA || '';
-            const commitMessage = (await git(['log', '-1', '--pretty=%B', commitSha])).trim();
+            const commitMessage = (await git(['log', '-1', '--pretty=%B', commitish])).trim();
             releaseNotes = commitMessage;
         }
         const releaseNotesLines = releaseNotes.split('\n');
