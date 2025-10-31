@@ -68358,25 +68358,26 @@ const main = async () => {
             throw new Error(`Tag for ${packageName} ${packageVersion} already exists. Please ensure the package version is updated for a new release.`);
         }
         core.info(`Generating Release for ${packageName} ${packageVersion}...`);
+        const workspace = process.env.GITHUB_WORKSPACE || '';
+        const relativeWorkspace = path.relative(workspace, packageDir).replace(/\\/g, '/');
         const splitUpmBranch = core.getInput('split-upm-branch', { required: false }) || 'upm';
-        const split = splitUpmBranch.toLowerCase() !== 'none';
+        const split = splitUpmBranch.toLowerCase() !== 'none' && relativeWorkspace !== '.';
         let commitish = '';
         if (split) {
             core.startGroup(`UPM Subtree Split`);
             try {
-                const workspace = process.env.GITHUB_WORKSPACE;
-                const relativeWorkspace = packageDir.replace(workspace, '').replace(/^[\/\\]/, '');
                 const tempSplitBranch = `${splitUpmBranch}-split-${Date.now()}`;
                 await git(['subtree', 'split', '--prefix', relativeWorkspace, '-b', tempSplitBranch]);
+                const splitCommit = (await git(['rev-parse', tempSplitBranch])).trim();
                 const lsRemote = await git(['ls-remote', '--heads', 'origin', splitUpmBranch], true);
                 const remoteExists = lsRemote.trim().length > 0;
                 if (remoteExists) {
                     await git(['fetch', 'origin', splitUpmBranch]);
                     await git(['checkout', '-B', splitUpmBranch, `origin/${splitUpmBranch}`]);
-                    await git(['merge', '--allow-unrelated-histories', '--no-edit', tempSplitBranch]);
+                    await git(['cherry-pick', splitCommit]);
                 }
                 else {
-                    await git(['checkout', '-B', splitUpmBranch, tempSplitBranch]);
+                    await git(['checkout', '-B', splitUpmBranch, splitCommit]);
                 }
                 await git(['push', '-u', 'origin', splitUpmBranch]);
                 commitish = (await git(['rev-parse', splitUpmBranch])).trim();

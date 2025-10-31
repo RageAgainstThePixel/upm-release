@@ -82,19 +82,21 @@ const main = async () => {
         }
 
         core.info(`Generating Release for ${packageName} ${packageVersion}...`);
-
+        const workspace = process.env.GITHUB_WORKSPACE || '';
+        const relativeWorkspace = path.relative(workspace, packageDir).replace(/\\/g, '/');
         const splitUpmBranch = core.getInput('split-upm-branch', { required: false }) || 'upm';
-        const split = splitUpmBranch.toLowerCase() !== 'none';
+        const split = splitUpmBranch.toLowerCase() !== 'none' && relativeWorkspace !== '.';
         let commitish = '';
 
         if (split) {
             core.startGroup(`UPM Subtree Split`);
             try {
-                const workspace = process.env.GITHUB_WORKSPACE;
-                const relativeWorkspace = packageDir.replace(workspace, '').replace(/^[\/\\]/, '');
-
                 const tempSplitBranch = `${splitUpmBranch}-split-${Date.now()}`;
+                // Create a split branch containing the subtree history for the package prefix.
                 await git(['subtree', 'split', '--prefix', relativeWorkspace, '-b', tempSplitBranch]);
+
+                // Resolve the split commit (tempSplitBranch should point at a single split commit)
+                const splitCommit = (await git(['rev-parse', tempSplitBranch])).trim();
 
                 // Check if remote branch exists without throwing
                 const lsRemote = await git(['ls-remote', '--heads', 'origin', splitUpmBranch], true);
@@ -105,13 +107,12 @@ const main = async () => {
                     await git(['fetch', 'origin', splitUpmBranch]);
                     await git(['checkout', '-B', splitUpmBranch, `origin/${splitUpmBranch}`]);
 
-                    // Merge the split into the existing upm branch. Allow unrelated histories because subtree splits
-                    // may have different roots when created independently. This will preserve the remote history and
-                    // append the new split commit(s) on top.
-                    await git(['merge', '--allow-unrelated-histories', '--no-edit', tempSplitBranch]);
+                    // Apply the split commit as a single linear commit on top of the remote branch.
+                    // Cherry-pick preserves a linear history (single commit) rather than creating a merge commit.
+                    await git(['cherry-pick', splitCommit]);
                 } else {
-                    // No remote branch exists yet: create local branch from the split
-                    await git(['checkout', '-B', splitUpmBranch, tempSplitBranch]);
+                    // No remote branch exists yet: create local branch from the split commit
+                    await git(['checkout', '-B', splitUpmBranch, splitCommit]);
                 }
 
                 // Push the branch to origin without force to avoid rewriting remote history.
@@ -124,6 +125,7 @@ const main = async () => {
                 packageDir = workspace;
                 packageJsonPath = path.join(packageDir, 'package.json');
 
+                // Clean up temporary split branch
                 await git(['branch', '-D', tempSplitBranch]);
             } finally {
                 core.endGroup();
