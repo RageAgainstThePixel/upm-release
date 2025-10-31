@@ -1,7 +1,7 @@
 {
   "name": "upm-release",
   "version": "1.0.0",
-  "description": "A GitHub action to sign and release a upm package.",
+  "description": "A GitHub action to sign and release a Unity upm package.",
   "author": "RageAgainstThePixel",
   "license": "MIT",
   "repository": {

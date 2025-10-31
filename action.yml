@@ -1,5 +1,5 @@
 name: upm-release
-description: A GitHub action to sign and release a upm package.
+description: A GitHub action to sign and release a Unity upm package.
 branding:
   icon: gift
   color: blue

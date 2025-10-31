@@ -1,6 +1,6 @@
 # upm-release
 
-A GitHub action to sign and release a upm package.
+A GitHub action to sign and release a Unity upm package.
 
 ## How to use
 

@@ -68340,16 +68340,17 @@ const main = async () => {
         catch (error) {
             throw new Error('package.json file not found or is not readable.');
         }
-        var packageJsonContent = await fs.promises.readFile(packageJsonPath, { encoding: 'utf-8' });
+        var packageJsonContent = fs.readFileSync(packageJsonPath, { encoding: 'utf-8' });
         var packageJson = JSON.parse(packageJsonContent);
         packageName = packageJson.name;
         packageVersion = packageJson.version;
+        const isPreview = packageJson.version.includes('-pre');
         const tags = await getTags();
         const lastTag = Array.from(tags.keys()).pop() || '';
         if (tags.has(packageVersion)) {
             throw new Error(`Tag for ${packageName} ${packageVersion} already exists. Please ensure the package version is updated for a new release.`);
         }
-        core.info(`Generating release for ${packageName} ${packageVersion}...`);
+        core.info(`Generating Release for ${packageName} ${packageVersion}...`);
         const splitUpmBranch = core.getInput('split-upm-branch', { required: false }) || 'upm';
         const split = splitUpmBranch.toLowerCase() !== 'none';
         let commitish = '';
@@ -68370,60 +68371,61 @@ const main = async () => {
         if (!releaseNotes) {
             const commitMessage = (await git(['log', '-1', '--pretty=%B', commitish])).trim();
             releaseNotes = commitMessage;
-        }
-        const releaseNotesLines = releaseNotes.split('\n');
-        const escapeForRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const pkgNameEsc = escapeForRegExp(packageName);
-        const pkgVerEsc = escapeForRegExp(packageVersion);
-        const firstLineRegex = new RegExp(`^${pkgNameEsc}\\s+v?${pkgVerEsc}\\s*(?:\\(|)\\#(\\d+)(?:\\)|)$`);
-        let prNumber = '';
-        const firstLineMatch = releaseNotesLines[0].match(firstLineRegex);
-        if (firstLineMatch) {
-            prNumber = firstLineMatch[1];
-            releaseNotesLines.shift();
-            releaseNotes = releaseNotesLines.join('\n').trim();
-        }
-        let actor = '';
-        if (prNumber.length > 0) {
-            let pr = null;
-            try {
-                const { data } = await octokit.rest.pulls.get({
-                    owner: github.context.repo.owner,
-                    repo: github.context.repo.repo,
-                    pull_number: parseInt(prNumber)
-                });
-                pr = data;
+            const releaseNotesLines = releaseNotes.split('\n');
+            const escapeForRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const pkgNameEsc = escapeForRegExp(packageName);
+            const pkgVerEsc = escapeForRegExp(packageVersion);
+            const firstLineRegex = new RegExp(`^${pkgNameEsc}\\s+v?${pkgVerEsc}\\s*(?:\\(|)\\#(\\d+)(?:\\)|)$`);
+            let prNumber = '';
+            const firstLineMatch = releaseNotesLines[0].match(firstLineRegex);
+            if (firstLineMatch) {
+                prNumber = firstLineMatch[1];
+                releaseNotesLines.shift();
+                releaseNotes = releaseNotesLines.join('\n').trim();
             }
-            catch (error) {
-                core.warning(`Failed to get PR #${prNumber} details: ${error}`);
-            }
-            actor = (_a = pr === null || pr === void 0 ? void 0 : pr.user) === null || _a === void 0 ? void 0 : _a.login;
-        }
-        if (!actor || actor.length === 0) {
-            actor = process.env.GITHUB_ACTOR || github.context.actor;
-        }
-        const prInfo = prNumber ? ` in #${prNumber}` : '';
-        let finalReleaseNotes = `## What's Changed\n- ${packageName} ${packageVersion} by @${actor}${prInfo}`;
-        if (releaseNotes.length > 0) {
-            const formatted = releaseNotes.split('\n').map(line => {
-                const trimmed = line.trimEnd();
-                if (trimmed.length === 0)
-                    return '';
-                if (/^[-]\s+/.test(trimmed)) {
-                    return `  ${trimmed}`;
+            let actor = '';
+            if (prNumber.length > 0) {
+                let pr = null;
+                try {
+                    const { data } = await octokit.rest.pulls.get({
+                        owner: github.context.repo.owner,
+                        repo: github.context.repo.repo,
+                        pull_number: parseInt(prNumber)
+                    });
+                    pr = data;
                 }
-                return `  - ${trimmed}`;
-            }).join('\n');
-            finalReleaseNotes += `\n\n${formatted}`;
-        }
-        if (lastTag.length > 0) {
-            finalReleaseNotes += `\n\n**Full Changelog**: https://github.com/${github.context.repo.owner}/${github.context.repo.repo}/compare/${lastTag}...${packageVersion}`;
-        }
-        else {
-            finalReleaseNotes += `\n\n**Full Changelog**: https://github.com/${github.context.repo.owner}/${github.context.repo.repo}/commits/${packageVersion}`;
+                catch (error) {
+                    core.warning(`Failed to get PR #${prNumber} details: ${error}`);
+                }
+                actor = (_a = pr === null || pr === void 0 ? void 0 : pr.user) === null || _a === void 0 ? void 0 : _a.login;
+            }
+            if (!actor || actor.length === 0) {
+                actor = process.env.GITHUB_ACTOR || github.context.actor;
+            }
+            const prInfo = prNumber ? ` in #${prNumber}` : '';
+            let finalReleaseNotes = `## What's Changed\n- ${packageName} ${packageVersion} by @${actor}${prInfo}`;
+            if (releaseNotes.length > 0) {
+                const formatted = releaseNotes.split('\n').map(line => {
+                    const trimmed = line.trimEnd();
+                    if (trimmed.length === 0)
+                        return '';
+                    if (/^[-]\s+/.test(trimmed)) {
+                        return `  ${trimmed}`;
+                    }
+                    return `  - ${trimmed}`;
+                }).join('\n');
+                finalReleaseNotes += `\n\n${formatted}`;
+            }
+            if (lastTag.length > 0) {
+                finalReleaseNotes += `\n\n**Full Changelog**: https://github.com/${github.context.repo.owner}/${github.context.repo.repo}/compare/${lastTag}...${packageVersion}`;
+            }
+            else {
+                finalReleaseNotes += `\n\n**Full Changelog**: https://github.com/${github.context.repo.owner}/${github.context.repo.repo}/commits/${packageVersion}`;
+            }
+            releaseNotes = finalReleaseNotes;
         }
         core.startGroup(`----- Release Notes -----`);
-        core.info(finalReleaseNotes);
+        core.info(releaseNotes);
         core.endGroup();
         const unityHub = new unity_cli_1.UnityHub();
         await unityHub.Install(true, undefined);
@@ -68446,14 +68448,16 @@ const main = async () => {
         }
         const signedTgzPath = tgzFiles[0];
         core.info(`Signed package created at ${signedTgzPath}`);
+        let releaseTitle = core.getInput('release-title', { required: false }) || `${packageName} ${packageVersion}`;
         const { data: release } = await octokit.rest.repos.createRelease({
             owner: github.context.repo.owner,
             repo: github.context.repo.repo,
             tag_name: packageVersion,
-            name: `${packageName} ${packageVersion}`,
+            name: releaseTitle,
+            body: releaseNotes,
             generate_release_notes: false,
-            body: finalReleaseNotes,
             target_commitish: commitish,
+            prerelease: isPreview,
             draft: true
         });
         core.info(`Release created: ${release.html_url}`);
