@@ -68310,9 +68310,18 @@ const main = async () => {
         const password = core.getInput('password', { required: true });
         const organizationId = core.getInput('organization-id', { required: true });
         let releaseNotes = core.getInput('release-notes', { required: false });
-        await git(['config', 'user.name', 'github-actions[bot]']);
-        await git(['config', 'user.email', 'github-actions[bot]@users.noreply.github.com']);
-        await git(['fetch', '--tags', '--force']);
+        let tags = new Map();
+        core.startGroup(`fetching git info...`);
+        try {
+            await git(['config', 'user.name', 'github-actions[bot]']);
+            await git(['config', 'user.email', 'github-actions[bot]@users.noreply.github.com']);
+            await git(['fetch', 'origin']);
+            await git(['fetch', '--tags', '--force']);
+            tags = await getTags();
+        }
+        finally {
+            core.endGroup();
+        }
         let packageName = '';
         let packageVersion = '';
         let packageJsonPath = core.getInput('package-json', { required: false }) || `**/Packages/**/package.json`;
@@ -68345,22 +68354,27 @@ const main = async () => {
         packageName = packageJson.name;
         packageVersion = packageJson.version;
         const isPreview = packageJson.version.includes('-pre');
-        const tags = await getTags();
         const lastTag = Array.from(tags.keys()).pop() || '';
         if (tags.has(packageVersion)) {
             throw new Error(`Tag for ${packageName} ${packageVersion} already exists. Please ensure the package version is updated for a new release.`);
         }
         core.info(`Generating Release for ${packageName} ${packageVersion}...`);
+        const workspace = process.env.GITHUB_WORKSPACE;
+        const relativeWorkspace = packageDir.replace(`${workspace}/`, '');
         const splitUpmBranch = core.getInput('split-upm-branch', { required: false }) || 'upm';
-        const split = splitUpmBranch.toLowerCase() !== 'none';
+        const split = splitUpmBranch.toLowerCase() !== 'none' && relativeWorkspace.length > 0;
         let commitish = '';
         if (split) {
-            const workspace = process.env.GITHUB_WORKSPACE;
-            const relativeWorkspace = packageDir.replace(workspace, '').replace(/^[\/\\]/, '');
-            await git(['subtree', 'split', '--prefix', relativeWorkspace, '-b', splitUpmBranch]);
-            await git(['push', '-u', 'origin', splitUpmBranch, '--force']);
-            commitish = (await git(['rev-parse', splitUpmBranch])).trim();
-            await git(['checkout', commitish]);
+            core.startGroup(`UPM subtree split...`);
+            try {
+                await git(['subtree', 'split', '--prefix', relativeWorkspace, '-b', splitUpmBranch]);
+                await git(['push', '-u', 'origin', splitUpmBranch, '--force']);
+                commitish = (await git(['rev-parse', splitUpmBranch])).trim();
+                await git(['checkout', commitish]);
+            }
+            finally {
+                core.endGroup();
+            }
             packageJsonPath = path.join(workspace, 'package.json');
             packageDir = workspace;
         }
