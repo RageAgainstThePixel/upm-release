@@ -1,6 +1,6 @@
 {
   "name": "upm-release",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "A GitHub action to sign and release a Unity upm package.",
   "author": "RageAgainstThePixel",
   "license": "MIT",
@@ -22,7 +22,7 @@
     "@rage-against-the-pixel/unity-cli": "^1.5.3"
   },
   "devDependencies": {
-    "@types/node": "^22.18.13",
+    "@types/node": "^22.19.1",
     "@vercel/ncc": "^0.34.0",
     "shx": "^0.3.4",
     "typescript": "^5.9.3"
