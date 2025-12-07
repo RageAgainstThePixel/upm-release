@@ -156,13 +156,14 @@ const main = async () => {
             if (releaseNotes.length > 0) {
                 const formatted = releaseNotes.split('\n').map(line => {
                     const trimmed = line.trimEnd();
-                    if (trimmed.length === 0) return '';
-                    // If the line already starts with a bullet, keep it and indent two spaces before it
-                    if (/^[-]\s+/.test(trimmed)) {
-                        return `  ${trimmed}`;
-                    }
-                    // otherwise add a bullet
-                    return `  - ${trimmed}`;
+                    if (trimmed.length === 0) { return ''; }
+
+                    const leadingWhitespace = trimmed.match(/^\s*/)?.[0] ?? '';
+                    const content = trimmed.slice(leadingWhitespace.length);
+                    const hasBullet = /^[-*+]\s+/.test(content);
+                    const normalized = hasBullet ? content : `- ${content}`;
+
+                    return `  ${leadingWhitespace}${normalized}`;
                 }).join('\n');
                 finalReleaseNotes += formatted;
             }
