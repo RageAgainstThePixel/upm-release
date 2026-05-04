@@ -8,7 +8,7 @@ import {
 } from '@actions/exec';
 import {
     UpmCli
-} from '@rage-against-the-pixel/unity-cli';
+} from '@rage-against-the-pixel/unity-cli/dist/upm-cli';
 
 const main = async () => {
     try {
