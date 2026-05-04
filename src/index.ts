@@ -237,23 +237,26 @@ const main = async () => {
             throw new Error('RUNNER_TEMP is not set; cannot determine output directory for the signed package.');
         }
 
-        // UpmCli honors UPM_CLI_PATH over the managed install; clear it so Install/Version/Pack use the binary we install.
-        if (process.env.UPM_CLI_PATH?.trim()) {
-            core.warning(
-                'UPM_CLI_PATH is set on the runner; it is ignored for this step so signing uses the managed UPM CLI from unity-cli.'
-            );
-            delete process.env.UPM_CLI_PATH;
+        const upmCli = new UpmCli();
+        let managedReleaseTag: string | undefined;
+
+        try {
+            const exe = upmCli.GetExecutablePath();
+            if (process.env.UPM_CLI_PATH?.trim()) {
+                core.info(`Using UPM CLI from UPM_CLI_PATH (${exe}).`);
+            } else {
+                core.info(`Using managed UPM CLI (${exe}).`);
+            }
+            managedReleaseTag = upmCli.GetInstalledReleaseTag();
+        } catch {
+            managedReleaseTag = await upmCli.Install({ skipIfInstalled: true });
         }
 
-        const upmCli = new UpmCli();
-        const latestTag = await upmCli.GetLatestReleaseTag();
-        const shouldInstallOrUpdate =
-            !upmCli.GetInstalledReleaseTag() || upmCli.IsUpdateAvailable(latestTag);
-        const installedTag = await upmCli.Install({
-            version: latestTag,
-            skipIfInstalled: !shouldInstallOrUpdate,
-        });
-        await upmCli.Version(installedTag);
+        if (managedReleaseTag) {
+            await upmCli.Version(managedReleaseTag);
+        } else {
+            await upmCli.Version();
+        }
 
         const redactLiterals = [organizationId, serviceAccountKeyId, serviceAccountKeySecret].filter((s) => s.length > 0);
         await upmCli.Pack(
@@ -311,7 +314,7 @@ const main = async () => {
         const artifactPath = path.resolve(signedTgzPath);
         core.setOutput('artifact-path', artifactPath);
     } catch (error) {
-        core.setFailed(error);
+        core.setFailed(error instanceof Error ? error : `${error}`);
     }
 }
 

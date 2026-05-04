@@ -9,7 +9,7 @@ When the action runs, it will:
 1. Check out the repository.
 1. Read the `package.json` file to get the package name and version.
 1. Optionally perform a subtree split to a specified branch (`upm` by default), then target that commit for the release.
-1. Install or update the [Unity Package Manager CLI](https://docs.unity3d.com/6000.6/Documentation/Manual/upm-cli.html) to the latest release (via [`unity-cli`](https://github.com/RageAgainstThePixel/unity-cli)), then sign and pack the package with `upm pack`.
+1. Use the Unity Package Manager CLI for signing: if **`UPM_CLI_PATH`** is set, or a **managed** install already exists under `~/.unity-cli/upm` (from a prior run), that binary is used **without** contacting the CDN. Otherwise the action installs the managed CLI **once** via [`unity-cli`](https://github.com/RageAgainstThePixel/unity-cli) (see [UPM CLI](https://docs.unity3d.com/6000.6/Documentation/Manual/upm-cli.html)). Then it runs `upm pack`.
 1. Create a draft GitHub release with the signed `.tgz` as a release asset.
 
 > [!IMPORTANT]
