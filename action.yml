@@ -29,6 +29,9 @@ inputs:
     description: 'Branch name for `git subtree split`, or `none` to disable. Default: `upm`.'
     required: false
     default: 'upm'
+outputs:
+  artifact-path:
+    description: Local filesystem path to the signed Unity package tarball (.tgz).
 runs:
   using: node24
   main: dist/index.js

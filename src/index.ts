@@ -299,6 +299,9 @@ const main = async () => {
         });
 
         core.info(`Release asset uploaded: ${asset.browser_download_url}`);
+
+        const artifactPath = path.resolve(signedTgzPath);
+        core.setOutput('artifact-path', artifactPath);
     } catch (error) {
         core.setFailed(error);
     }

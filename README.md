@@ -52,6 +52,7 @@ jobs:
         with:
           fetch-depth: 0
       - uses: RageAgainstThePixel/upm-release@v2
+        id: upm_release
         with:
           organization-id: ${{ secrets.UNITY_ORG_ID }}
           upm-service-account-key-id: ${{ secrets.UPM_SERVICE_ACCOUNT_KEY_ID }}
@@ -61,6 +62,8 @@ jobs:
           release-notes: 'Optional release notes.' # optional; default from commit / PR
           github-token: ${{ secrets.GITHUB_TOKEN }} # optional
           split-upm-branch: 'upm' # optional; use 'none' to disable subtree split
+      - name: Echo Signed Package path
+        run: echo "Signed .tgz at ${{ steps.upm_release.outputs.artifact-path }}"
 ```
 
 ### inputs
@@ -75,3 +78,9 @@ jobs:
 | release-notes | Release body; default from the target commit message. | false |
 | github-token | Token for creating the release and uploading the asset. Defaults to `GITHUB_TOKEN`. | false |
 | split-upm-branch | Branch name for `git subtree split`, or `none` to disable. Default: `upm`. | false |
+
+### outputs
+
+| name | description |
+| ---- | ----------- |
+| artifact-path | Absolute local path to the signed `.tgz` after signing and release upload succeed. |
