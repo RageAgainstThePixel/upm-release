@@ -1,6 +1,6 @@
 # upm-release
 
-A GitHub action to sign and release a Unity upm package.
+A GitHub action to sign and release a Unity UPM package.
 
 ## How to use
 
@@ -8,21 +8,30 @@ When the action runs, it will:
 
 1. Check out the repository.
 1. Read the `package.json` file to get the package name and version.
-1. Tag the repository with the package version, and optionally perform a subtree split to a specified branch (upm by default).
-1. Sign the package using [`unity-cli`](https://github.com/RageAgainstThePixel/unity-cli).
-1. Create a draft GitHub release with the signed package artifact on the subtree split branch (or default branch if subtree split is disabled).
+1. Optionally perform a subtree split to a specified branch (`upm` by default), then target that commit for the release.
+1. Use the Unity Package Manager CLI for signing: if **`UPM_CLI_PATH`** is set, or a **managed** install already exists under `~/.unity-cli/upm` (from a prior run), that binary is used **without** contacting the CDN. Otherwise the action installs the managed CLI **once** via [`unity-cli`](https://github.com/RageAgainstThePixel/unity-cli) (see [UPM CLI](https://docs.unity3d.com/6000.6/Documentation/Manual/upm-cli.html)). Then it runs `upm pack`.
+1. Create a draft GitHub release with the signed `.tgz` as a release asset.
 
 > [!IMPORTANT]
 > Make sure that the `package.json` file contains a valid semantic version (e.g., `1.0.0`, `2.1.3`, etc.) before running. If the version is not valid or an existing tag with the same version already exists, the action will fail.
 
-The action will then generate a ***draft*** GitHub release with the tag name and upload the signed package as a release asset.
+The action generates a ***draft*** GitHub release tagged with the package version and uploads the signed package as a release asset.
 
 ### Requirements
 
-- A Unity account with access to the organization that owns the package.
-- Unity email and password stored as GitHub secrets.
-- The organization cloud id stored as a GitHub secret.
-- `GITHUB_TOKEN` secret to create releases and uploads. You may need to set the correct permissions or provide a personal access token if your repository is private or if the default token does not have sufficient permissions.
+- A **Unity Cloud** organization where you can use **Package Manager** features for signing.
+
+**Package Manager service account (signing)**:
+
+1. Open [Unity Cloud](https://cloud.unity.com/) and select the organization that should own signing (if you use several orgs, pick the right one before the next steps).
+1. Create a **service account** on that organization.
+1. Grant the account access at **organization** scope. In **Manage organization roles** (or your org’s equivalent role UI), set the **Package Manager** role to **Package Manager Package Signer**, then save.
+1. Create or view credentials for that service account. You will get a **key id** and **secret**; store them as GitHub secrets (for example `UPM_SERVICE_ACCOUNT_KEY_ID` and `UPM_SERVICE_ACCOUNT_KEY_SECRET`) and pass them to the action inputs `upm-service-account-key-id` and `upm-service-account-key-secret`, **or** define those two names as environment variables on the job instead of inputs.
+1. In the same org, open **Administration** → **Settings** and copy **Organization ID**. Store it as a GitHub secret (`UNITY_ORG_ID` or `UNITY_ORGANIZATION_ID`) and pass it to the **`organization-id`** input.
+
+**CI authentication**:
+
+- `GITHUB_TOKEN` (or `github-token`) with permission to create releases and upload assets. You may need a personal access token if the default token is insufficient (e.g. some private repo setups).
 
 ### workflow
 
@@ -30,38 +39,48 @@ The action will then generate a ***draft*** GitHub release with the tag name and
 name: UPM Release
 on:
   push:
-    branch: [main]
-  workflow_dispatch: # Optional: allows manual triggering of the workflow. Will attempt to make a draft release on the latest tag.
+    branches: [main]
+  workflow_dispatch: # Optional: manual run; creates a draft release from the current ref and package version.
+
 jobs:
   release:
     permissions:
       contents: write
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v5
-      with:
-        fetch-depth: 0
-    - uses: RageAgainstThePixel/upm-release@v1
-      with:
-        username: ${{ secrets.UNITY_USERNAME }}
-        password: ${{ secrets.UNITY_PASSWORD }}
-        organization-id: ${{ secrets.UNITY_ORG_ID }}
-        package-json: 'path/to/package.json' # optional, default is '**/Packages/**/package.json' glob search
-        release-title: 'Optional release title for this release.' # optional, default is generated from package name and version
-        release-notes: 'Optional release notes.' # optional, default is generated from commit message
-        github-token: ${{ secrets.GITHUB_TOKEN }} # optional, default is GITHUB_TOKEN secret
-        split-upm-branch: 'upm' # optional, default is to use the upm branch, but can be disabled by passing 'none'
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: RageAgainstThePixel/upm-release@v2
+        id: upm_release
+        with:
+          organization-id: ${{ secrets.UNITY_ORG_ID }}
+          upm-service-account-key-id: ${{ secrets.UPM_SERVICE_ACCOUNT_KEY_ID }}
+          upm-service-account-key-secret: ${{ secrets.UPM_SERVICE_ACCOUNT_KEY_SECRET }}
+          package-json: 'path/to/package.json' # optional; default glob is '**/Packages/**/package.json'
+          release-title: 'Optional release title.' # optional
+          release-notes: 'Optional release notes.' # optional; default from commit / PR
+          github-token: ${{ secrets.GITHUB_TOKEN }} # optional
+          split-upm-branch: 'upm' # optional; use 'none' to disable subtree split
+      - name: Echo Signed Package path
+        run: echo "Signed .tgz at ${{ steps.upm_release.outputs.artifact-path }}"
 ```
 
 ### inputs
 
 | name | description | required |
 | ---- | ----------- | -------- |
-| username | The username for the Unity account. | true |
-| password | The password for the Unity account. | true |
-| organization-id | The organization ID for the Unity account. | true |
-| package-json | Path to the package.json file. Defaults to `**/Packages/**/package.json` glob search. | false |
-| release-title | The title for the GitHub release. If not provided, it will be generated from the package name and version. | false |
-| release-notes | The release notes for the GitHub release. If not provided, it will be generated from the commit message. | false |
-| github-token | GitHub token to create releases and upload assets. Defaults to the GITHUB_TOKEN secret, but may be required if permissions are not set correctly or the repository is private. | false |
-| split-upm-branch | Optional branch name if the package release tag should be pushed to a different branch than the default branch. Pass 'none' to disable the subtree split. | false |
+| organization-id | Unity Cloud organization id used for signing. Omit if `UNITY_ORG_ID` / `UNITY_ORGANIZATION_ID` is set in the environment. | true |
+| upm-service-account-key-id | Service account key id. Omit if `UPM_SERVICE_ACCOUNT_KEY_ID` is set in the environment. | true |
+| upm-service-account-key-secret | Service account key secret. Omit if `UPM_SERVICE_ACCOUNT_KEY_SECRET` is set in the environment. | true |
+| package-json | Path glob for `package.json`. Default: `**/Packages/**/package.json`. | false |
+| release-title | GitHub release title; default from package name and version. | false |
+| release-notes | Release body; default from the target commit message. | false |
+| github-token | Token for creating the release and uploading the asset. Defaults to `GITHUB_TOKEN`. | false |
+| split-upm-branch | Branch name for `git subtree split`, or `none` to disable. Default: `upm`. | false |
+
+### outputs
+
+| name | description |
+| ---- | ----------- |
+| artifact-path | Absolute local path to the signed `.tgz` after signing and release upload succeed. |

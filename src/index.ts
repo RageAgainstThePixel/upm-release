@@ -1,26 +1,64 @@
-import core = require('@actions/core');
-import { exec } from '@actions/exec';
 import * as fs from 'fs';
+import * as path from 'path';
+import * as core from '@actions/core';
 import * as github from '@actions/github';
 import * as glob from '@actions/glob';
-import * as path from 'path';
 import {
-    UnityHub,
-    UnityVersion
+    exec
+} from '@actions/exec';
+import {
+    UpmCli
 } from '@rage-against-the-pixel/unity-cli';
 
 const main = async () => {
     try {
-        const githubToken = core.getInput('github-token', { required: false }) || process.env.GITHUB_TOKEN || undefined;
+        const githubToken = (core.getInput('github-token', { required: false }) || process.env.GITHUB_TOKEN || '').trim();
 
-        if (!githubToken) {
+        if (githubToken.length === 0) {
             throw new Error('GitHub token is required to create a release. Please ensure your workflow enables permissions for GITHUB_TOKEN or pass a personal access token.');
         }
 
         const octokit = github.getOctokit(githubToken);
-        const username: string = core.getInput('username', { required: true });
-        const password: string = core.getInput('password', { required: true });
-        const organizationId: string = core.getInput('organization-id', { required: true });
+        const organizationId: string = (
+            core.getInput('organization-id', { required: false }) ||
+            process.env.UNITY_ORGANIZATION_ID ||
+            process.env.UNITY_ORG_ID ||
+            ''
+        ).trim();
+
+        if (organizationId.length === 0) {
+            throw new Error('Organization id is required. Pass the `organization-id` input or set `UNITY_ORGANIZATION_ID` or `UNITY_ORG_ID`.');
+        }
+
+        process.env.UNITY_ORGANIZATION_ID = organizationId;
+        core.setSecret(organizationId);
+
+        const serviceAccountKeyId = (
+            core.getInput('upm-service-account-key-id', { required: false }) ||
+            process.env.UPM_SERVICE_ACCOUNT_KEY_ID ||
+            ''
+        ).trim();
+
+        if (serviceAccountKeyId.length === 0) {
+            throw new Error('UPM service account key id is required. Pass the `upm-service-account-key-id` input or set `UPM_SERVICE_ACCOUNT_KEY_ID`.');
+        }
+
+        process.env.UPM_SERVICE_ACCOUNT_KEY_ID = serviceAccountKeyId;
+        core.setSecret(serviceAccountKeyId);
+
+        const serviceAccountKeySecret = (
+            core.getInput('upm-service-account-key-secret', { required: false }) ||
+            process.env.UPM_SERVICE_ACCOUNT_KEY_SECRET ||
+            ''
+        ).trim();
+
+        if (serviceAccountKeySecret.length === 0) {
+            throw new Error('UPM service account key secret is required. Pass the `upm-service-account-key-secret` input or set `UPM_SERVICE_ACCOUNT_KEY_SECRET`.');
+        }
+
+        process.env.UPM_SERVICE_ACCOUNT_KEY_SECRET = serviceAccountKeySecret;
+        core.setSecret(serviceAccountKeySecret);
+
         let releaseNotes: string = core.getInput('release-notes', { required: false });
         let tags: Map<string, string> = new Map<string, string>();
 
@@ -85,10 +123,23 @@ const main = async () => {
         core.info(`Generating Release for ${packageName} ${packageVersion}...`);
 
         const workspace = process.env.GITHUB_WORKSPACE;
-        const relativeWorkspace = packageDir.replace(`${workspace}/`, '');
+
+        if (!workspace) {
+            throw new Error('GITHUB_WORKSPACE is not set. This action must run inside a GitHub Actions job with a checkout step.');
+        }
+
+        const relativeWorkspace = path.relative(workspace, packageDir).split(path.sep).join('/');
         const splitUpmBranch = core.getInput('split-upm-branch', { required: false }) || 'upm';
+        const wantsSplit = splitUpmBranch.toLowerCase() !== 'none' && relativeWorkspace.length > 0;
+
+        if (wantsSplit && relativeWorkspace.startsWith('..')) {
+            throw new Error(
+                `Package directory must be inside GITHUB_WORKSPACE for subtree split (resolved "${relativeWorkspace}" from "${packageDir}").`
+            );
+        }
+
         // don't split if the branch is set to 'none' (case insensitive) or if the workspace is the package dir
-        const split = splitUpmBranch.toLowerCase() !== 'none' && relativeWorkspace.length > 0;
+        const split = wantsSplit;
         let commitish = '';
 
         if (split) {
@@ -121,7 +172,7 @@ const main = async () => {
             // allow optional parentheses around the PR number like "(#2)" or "#2"
             const firstLineRegex = new RegExp(`^${pkgNameEsc}\\s+v?${pkgVerEsc}\\s*(?:\\(|)\\#(\\d+)(?:\\)|)$`);
             let prNumber = '';
-            const firstLineMatch = releaseNotesLines[0].match(firstLineRegex);
+            const firstLineMatch = releaseNotesLines[0]?.match(firstLineRegex);
 
             if (firstLineMatch) {
                 prNumber = firstLineMatch[1];
@@ -180,22 +231,46 @@ const main = async () => {
         core.info(releaseNotes);
         core.endGroup();
 
-        const unityHub = new UnityHub();
-        await unityHub.Install(true, undefined);
-        // must use a unity editor 6000.3 or newer
-        const unityVersion = new UnityVersion('6000.3');
-        const unityEditor = await unityHub.GetEditor(unityVersion, undefined, ['f', 'b']);
         const outputDir = process.env.RUNNER_TEMP;
 
-        await unityEditor.Run({
-            args: [
-                '-batchmode',
-                '-username', username,
-                '-password', password,
-                '-cloudOrganization', organizationId,
-                '-upmPack', packageDir, outputDir,
-            ]
-        });
+        if (!outputDir) {
+            throw new Error('RUNNER_TEMP is not set; cannot determine output directory for the signed package.');
+        }
+
+        const upmCli = new UpmCli();
+        let managedReleaseTag: string | undefined;
+
+        try {
+            const exe = upmCli.GetExecutablePath();
+            if (process.env.UPM_CLI_PATH?.trim()) {
+                core.info(`Using UPM CLI from UPM_CLI_PATH (${exe}).`);
+            } else {
+                core.info(`Using managed UPM CLI (${exe}).`);
+            }
+            managedReleaseTag = upmCli.GetInstalledReleaseTag();
+        } catch {
+            managedReleaseTag = await upmCli.Install({ skipIfInstalled: true });
+        }
+
+        if (managedReleaseTag) {
+            await upmCli.Version(managedReleaseTag);
+        } else {
+            await upmCli.Version();
+        }
+
+        const redactLiterals = [organizationId, serviceAccountKeyId, serviceAccountKeySecret].filter((s) => s.length > 0);
+        await upmCli.Pack(
+            {
+                organizationId,
+                packageDirectory: packageDir,
+                destination: outputDir,
+            },
+            {
+                silent: false,
+                showCommand: false,
+                redactLiterals,
+            }
+        );
 
         const tgzGlobber = await glob.create(path.join(outputDir, '*.tgz'));
         const tgzFiles = await tgzGlobber.glob();
@@ -235,8 +310,11 @@ const main = async () => {
         });
 
         core.info(`Release asset uploaded: ${asset.browser_download_url}`);
+
+        const artifactPath = path.resolve(signedTgzPath);
+        core.setOutput('artifact-path', artifactPath);
     } catch (error) {
-        core.setFailed(error);
+        core.setFailed(error instanceof Error ? error : `${error}`);
     }
 }
 
