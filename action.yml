@@ -1,32 +1,32 @@
 name: upm-release
-description: A GitHub action to sign and release a Unity upm package.
+description: 'A GitHub action to sign and release a Unity upm package.'
 branding:
   icon: gift
   color: blue
 inputs:
-  username:
-    description: The username for the Unity account.
-    required: true
-  password:
-    description: The password for the Unity account.
-    required: true
   organization-id:
-    description: The organization ID for the Unity account.
-    required: true
+    description: 'Unity Cloud organization id used for signing. Omit if `UNITY_ORG_ID` / `UNITY_ORGANIZATION_ID` is set in the environment.'
+    required: false
+  upm-service-account-key-id:
+    description: 'Service account key id. Omit if `UPM_SERVICE_ACCOUNT_KEY_ID` is set in the environment.'
+    required: false
+  upm-service-account-key-secret:
+    description: 'Service account key secret. Omit if `UPM_SERVICE_ACCOUNT_KEY_SECRET` is set in the environment.'
+    required: false
   package-json:
-    description: Path to the package.json file. Defaults to `**/Packages/**/package.json` glob search.
+    description: 'Path glob for `package.json`. Default: `**/Packages/**/package.json`.'
     required: false
   release-title:
-    description: Optional title for the release.
+    description: 'GitHub release title; default from package name and version.'
     required: false
   release-notes:
-    description: Optional release notes.
+    description: 'Release body; default from the target commit message.'
     required: false
   github-token:
-    description: GitHub token to create releases and upload assets. Defaults to the GITHUB_TOKEN secret, but may be required if permissions are not set correctly or the repository is private.
+    description: 'Token for creating the release and uploading the asset. Defaults to `GITHUB_TOKEN`.'
     required: false
   split-upm-branch:
-    description: Optional branch name if the package release tag should be pushed to a different branch than the default branch. Pass 'none' to disable the subtree split.
+    description: 'Branch name for `git subtree split`, or `none` to disable. Default: `upm`.'
     required: false
     default: 'upm'
 runs:

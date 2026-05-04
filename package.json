@@ -18,11 +18,11 @@
     "@actions/core": "^1.11.1",
     "@actions/exec": "^1.1.1",
     "@actions/github": "^6.0.1",
-    "@actions/glob": "^0.5.0",
-    "@rage-against-the-pixel/unity-cli": "^1.7.2"
+    "@actions/glob": "^0.5.1",
+    "@rage-against-the-pixel/unity-cli": "^2.0.0"
   },
   "devDependencies": {
-    "@types/node": "^22.19.1",
+    "@types/node": "^22.19.17",
     "@vercel/ncc": "^0.34.0",
     "shx": "^0.3.4",
     "typescript": "^5.9.3"
