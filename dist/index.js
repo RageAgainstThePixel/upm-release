@@ -96245,7 +96245,7 @@ const glob = __nccwpck_require__(8090);
 const exec_1 = __nccwpck_require__(1514);
 const unity_cli_1 = __nccwpck_require__(4858);
 const main = async () => {
-    var _a, _b;
+    var _a, _b, _c;
     try {
         const githubToken = (core.getInput('github-token', { required: false }) || process.env.GITHUB_TOKEN || '').trim();
         if (githubToken.length === 0) {
@@ -96422,6 +96422,10 @@ const main = async () => {
         const outputDir = process.env.RUNNER_TEMP;
         if (!outputDir) {
             throw new Error('RUNNER_TEMP is not set; cannot determine output directory for the signed package.');
+        }
+        if ((_c = process.env.UPM_CLI_PATH) === null || _c === void 0 ? void 0 : _c.trim()) {
+            core.warning('UPM_CLI_PATH is set on the runner; it is ignored for this step so signing uses the managed UPM CLI from unity-cli.');
+            delete process.env.UPM_CLI_PATH;
         }
         const upmCli = new unity_cli_1.UpmCli();
         const latestTag = await upmCli.GetLatestReleaseTag();

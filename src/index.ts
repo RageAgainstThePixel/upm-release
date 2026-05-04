@@ -237,6 +237,14 @@ const main = async () => {
             throw new Error('RUNNER_TEMP is not set; cannot determine output directory for the signed package.');
         }
 
+        // UpmCli honors UPM_CLI_PATH over the managed install; clear it so Install/Version/Pack use the binary we install.
+        if (process.env.UPM_CLI_PATH?.trim()) {
+            core.warning(
+                'UPM_CLI_PATH is set on the runner; it is ignored for this step so signing uses the managed UPM CLI from unity-cli.'
+            );
+            delete process.env.UPM_CLI_PATH;
+        }
+
         const upmCli = new UpmCli();
         const latestTag = await upmCli.GetLatestReleaseTag();
         const shouldInstallOrUpdate =
