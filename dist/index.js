@@ -62705,7 +62705,7 @@ minimatch.unescape = unescape_unescape;
 const external_node_module_namespaceObject = require("node:module");
 ;// CONCATENATED MODULE: ./node_modules/@electron/asar/lib/wrapped-fs.js
 
-const wrapped_fs_require = (0,external_node_module_namespaceObject.createRequire)("file:///E:/Dev/Rage/upm-release/node_modules/@electron/asar/lib/wrapped-fs.js");
+const wrapped_fs_require = (0,external_node_module_namespaceObject.createRequire)("file:///C:/Dev/rage/upm-release/node_modules/@electron/asar/lib/wrapped-fs.js");
 const fs = 'electron' in process.versions ? wrapped_fs_require('original-fs') : wrapped_fs_require('node:fs');
 const promisifiedMethods = [
     'lstat',
@@ -71673,7 +71673,7 @@ const main = async () => {
         core.info(releaseNotes);
         core.endGroup();
         const unityHub = new unity_cli_1.UnityHub();
-        await unityHub.Install(true, undefined);
+        await unityHub.Install(false, '3.14.3');
         const unityVersion = new unity_cli_1.UnityVersion('6000.3');
         const unityEditor = await unityHub.GetEditor(unityVersion, undefined, ['f', 'b']);
         const outputDir = process.env.RUNNER_TEMP;

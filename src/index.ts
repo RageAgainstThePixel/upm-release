@@ -181,7 +181,9 @@ const main = async () => {
         core.endGroup();
 
         const unityHub = new UnityHub();
-        await unityHub.Install(true, undefined);
+        // Hub 3.20+ installs under /usr/lib/unityhub; unity-cli 1.x still probes /opt/unityhub.
+        // Pin until consumers move to a dual-path Hub unity-cli (or upm-release@v2).
+        await unityHub.Install(false, '3.14.3');
         // must use a unity editor 6000.3 or newer
         const unityVersion = new UnityVersion('6000.3');
         const unityEditor = await unityHub.GetEditor(unityVersion, undefined, ['f', 'b']);
