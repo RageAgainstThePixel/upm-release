@@ -9,7 +9,8 @@ When the action runs, it will:
 1. Check out the repository.
 1. Read the `package.json` file to get the package name and version.
 1. Optionally perform a subtree split to a specified branch (`upm` by default), then target that commit for the release.
-1. Use the Unity Package Manager CLI for signing: if **`UPM_CLI_PATH`** is set, or a **managed** install already exists under `~/.unity-cli/upm` (from a prior run), that binary is used **without** contacting the CDN. Otherwise the action installs the managed CLI **once** via [`unity-cli`](https://github.com/RageAgainstThePixel/unity-cli) (see [UPM CLI](https://docs.unity3d.com/6000.6/Documentation/Manual/upm-cli.html)). Then it runs `upm pack`.
+1. Download any [Git LFS](https://git-lfs.com/) files in the package, so the signed package has the real files instead of LFS pointers.
+1. Install Unity's [UPM CLI](https://docs.unity3d.com/Manual/upm-cli.html) from Unity's CDN (`upm-cli-version`, `latest` by default) into the runner tool cache, verifying its SHA-256. If **`UPM_CLI_PATH`** is set, that binary is used instead. Then it runs `upm pack` to sign the package.
 1. Create a draft GitHub release with the signed `.tgz` as a release asset.
 
 > [!IMPORTANT]
@@ -18,6 +19,9 @@ When the action runs, it will:
 The action generates a ***draft*** GitHub release tagged with the package version and uploads the signed package as a release asset.
 
 ### Requirements
+
+- Signed packages are verified by Unity 6 and newer.
+- `git-lfs` on the runner if the package has Git LFS files (GitHub-hosted runners have it).
 
 - A **Unity Cloud** organization where you can use **Package Manager** features for signing.
 
@@ -51,7 +55,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: RageAgainstThePixel/upm-release@v2
+      - uses: RageAgainstThePixel/upm-release@v3
         id: upm_release
         with:
           organization-id: ${{ secrets.UNITY_ORG_ID }}
@@ -62,6 +66,7 @@ jobs:
           release-notes: 'Optional release notes.' # optional; default from commit / PR
           github-token: ${{ secrets.GITHUB_TOKEN }} # optional
           split-upm-branch: 'upm' # optional; use 'none' to disable subtree split
+          upm-cli-version: 'latest' # optional; e.g. 'v9.27.0'
       - name: Echo Signed Package path
         run: echo "Signed .tgz at ${{ steps.upm_release.outputs.artifact-path }}"
 ```
@@ -78,6 +83,7 @@ jobs:
 | release-notes | Release body; default from the target commit message. | false |
 | github-token | Token for creating the release and uploading the asset. Defaults to `GITHUB_TOKEN`. | false |
 | split-upm-branch | Branch name for `git subtree split`, or `none` to disable. Default: `upm`. | false |
+| upm-cli-version | UPM CLI version to install, e.g. `v9.27.0`. Default: `latest`. Ignored when `UPM_CLI_PATH` is set. | false |
 
 ### outputs
 
