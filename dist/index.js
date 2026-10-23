@@ -30374,7 +30374,7 @@ async function getLfsConfigOverrides(repoRoot) {
     const newline = entry.indexOf("\n");
     const key = newline >= 0 ? entry.substring(0, newline) : entry;
     const value = newline >= 0 ? entry.substring(newline + 1) : "";
-    if (!key.startsWith("lfs.") && !/^remote\..+\.lfs(push)?url$/.test(key)) {
+    if (!isSafeLfsConfigKey(key)) {
       continue;
     }
     const isSet = await exec("git", ["config", "--get", key], { cwd: repoRoot, silent: true, ignoreReturnCode: true });
@@ -30383,6 +30383,25 @@ async function getLfsConfigOverrides(repoRoot) {
     }
   }
   return overrides;
+}
+var SAFE_LFS_CONFIG_KEYS = /* @__PURE__ */ new Set([
+  "lfs.allowincompletepush",
+  "lfs.fetchexclude",
+  "lfs.fetchinclude",
+  "lfs.gitprotocol",
+  "lfs.locksverify",
+  "lfs.pushurl",
+  "lfs.skipdownloaderrors",
+  "lfs.url"
+]);
+var SAFE_LFS_CONFIG_PATTERNS = [
+  /^lfs\..+\.access$/i,
+  /^lfs\..+\.locksverify$/i,
+  /^remote\..+\.lfsurl$/i,
+  /^remote\..+\.lfspushurl$/i
+];
+function isSafeLfsConfigKey(key) {
+  return SAFE_LFS_CONFIG_KEYS.has(key.toLowerCase()) || SAFE_LFS_CONFIG_PATTERNS.some((pattern) => pattern.test(key));
 }
 async function gitOutput(args, cwd) {
   const chunks = [];
