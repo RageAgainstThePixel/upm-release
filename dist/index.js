@@ -29242,8 +29242,8 @@ var Path = class {
         let remaining = itemPath;
         let dir = dirname4(remaining);
         while (dir !== remaining) {
-          const basename6 = path7.basename(remaining);
-          this.segments.unshift(basename6);
+          const basename7 = path7.basename(remaining);
+          this.segments.unshift(basename7);
           remaining = dir;
           dir = dirname4(remaining);
         }
@@ -30326,7 +30326,8 @@ ${remaining.join("\n")}`);
   return pointers.length;
 }
 async function smudge(pointer, relativePath, repoRoot) {
-  const tempPath = `${pointer}.upm-release-lfs`;
+  const tempDir = await fs6.promises.mkdtemp(path12.join(path12.dirname(pointer), ".upm-release-lfs-"));
+  const tempPath = path12.join(tempDir, path12.basename(pointer));
   const child2 = (0, import_child_process.spawn)("git", ["-c", "lfs.fetchinclude=", "-c", "lfs.fetchexclude=", "lfs", "smudge", "--", relativePath], {
     cwd: repoRoot,
     env: { ...process.env, GIT_LFS_SKIP_SMUDGE: "0" },
@@ -30343,16 +30344,18 @@ async function smudge(pointer, relativePath, repoRoot) {
   exited.catch(() => void 0);
   try {
     child2.stdin.end(await fs6.promises.readFile(pointer));
-    await (0, import_promises.pipeline)(child2.stdout, fs6.createWriteStream(tempPath));
+    await (0, import_promises.pipeline)(child2.stdout, fs6.createWriteStream(tempPath, { flags: "wx" }));
     const exitCode = await exited;
     if (exitCode !== 0) {
       throw new Error(`git lfs smudge failed for ${relativePath}: ${stderr.trim()}`);
     }
+    await fs6.promises.chmod(tempPath, (await fs6.promises.stat(pointer)).mode & 4095);
     await fs6.promises.rename(tempPath, pointer);
   } catch (error2) {
     child2.kill();
-    await fs6.promises.rm(tempPath, { force: true });
     throw error2;
+  } finally {
+    await fs6.promises.rm(tempDir, { recursive: true, force: true });
   }
 }
 async function hasLfsAttributes(directory) {
