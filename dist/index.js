@@ -29726,6 +29726,7 @@ function create(patterns, options) {
 // src/upm-cli.ts
 var crypto3 = __toESM(require("crypto"));
 var fs5 = __toESM(require("fs"));
+var os8 = __toESM(require("os"));
 var path11 = __toESM(require("path"));
 
 // node_modules/@actions/tool-cache/lib/tool-cache.js
@@ -30212,7 +30213,8 @@ async function download(releaseTag) {
   const zipName = `upm-${platform2}.zip`;
   const releaseUrl = `${getCdnBaseUrl()}/releases/${releaseTag}`;
   info(`Downloading UPM CLI ${releaseTag} (${platform2})...`);
-  const zipPath = await downloadTool(`${releaseUrl}/${zipName}`);
+  const zipDest = path11.join(process.env.RUNNER_TEMP || os8.tmpdir(), `${crypto3.randomUUID()}.zip`);
+  const zipPath = await downloadTool(`${releaseUrl}/${zipName}`, zipDest);
   try {
     const expected = (await getText(`${releaseUrl}/${zipName}.sha256`)).trim().split(/\s+/)[0]?.toLowerCase();
     if (!expected) {
