@@ -7,8 +7,13 @@ import {
     exec
 } from '@actions/exec';
 import {
-    UpmCli
-} from '@rage-against-the-pixel/unity-cli/dist/upm-cli';
+    setupUpmCli
+} from './upm-cli';
+import {
+    getLfsConfigOverrides,
+    hasLfsAttributes,
+    materializeLfsFiles
+} from './git-lfs';
 
 const main = async () => {
     try {
@@ -141,14 +146,18 @@ const main = async () => {
         // don't split if the branch is set to 'none' (case insensitive) or if the workspace is the package dir
         const split = wantsSplit;
         let commitish = '';
+        let lfsConfigOverrides: string[] = [];
 
         if (split) {
+            // the split commit has no root .lfsconfig, keep its settings for the LFS downloads below
+            lfsConfigOverrides = await getLfsConfigOverrides(workspace);
             core.startGroup(`UPM subtree split...`);
             try {
                 await git(['subtree', 'split', '--prefix', relativeWorkspace, '-b', splitUpmBranch]);
                 await git(['push', '-u', 'origin', splitUpmBranch, '--force']);
                 commitish = (await git(['rev-parse', splitUpmBranch])).trim();
-                await git(['checkout', commitish]);
+                // skip the LFS smudge filter here, LFS files are downloaded below
+                await git(['checkout', commitish], false, { GIT_LFS_SKIP_SMUDGE: '1' });
             } finally {
                 core.endGroup();
             }
@@ -159,6 +168,16 @@ const main = async () => {
         }
 
         core.info(`Using target commit ${commitish} for the release.`);
+
+        const lfsFileCount = await materializeLfsFiles(packageDir, lfsConfigOverrides);
+
+        if (lfsFileCount > 0) {
+            core.info(`Downloaded ${lfsFileCount} Git LFS file(s) into the package.`);
+
+            if (split && !(await hasLfsAttributes(packageDir))) {
+                core.warning(`The ${splitUpmBranch} branch has Git LFS files but no .gitattributes with LFS rules, so installing it from a git url gets pointer files. Add a .gitattributes with the LFS rules to the package folder.`);
+            }
+        }
 
         if (!releaseNotes) {
             const commitMessage: string = (await git(['log', '-1', '--pretty=%B', commitish])).trim();
@@ -237,42 +256,28 @@ const main = async () => {
             throw new Error('RUNNER_TEMP is not set; cannot determine output directory for the signed package.');
         }
 
-        const upmCli = new UpmCli();
-        let managedReleaseTag: string | undefined;
+        const upmCliVersion = core.getInput('upm-cli-version', { required: false }) || 'latest';
+        let upmCliPath = '';
 
+        core.startGroup(`Setting up UPM CLI...`);
         try {
-            const exe = upmCli.GetExecutablePath();
-            if (process.env.UPM_CLI_PATH?.trim()) {
-                core.info(`Using UPM CLI from UPM_CLI_PATH (${exe}).`);
-            } else {
-                core.info(`Using managed UPM CLI (${exe}).`);
-            }
-            managedReleaseTag = upmCli.GetInstalledReleaseTag();
-        } catch {
-            managedReleaseTag = await upmCli.Install({ skipIfInstalled: true });
+            upmCliPath = await setupUpmCli(upmCliVersion);
+        } finally {
+            core.endGroup();
         }
 
-        if (managedReleaseTag) {
-            await upmCli.Version(managedReleaseTag);
-        } else {
-            await upmCli.Version();
+        const packDestination = path.join(outputDir, `upm-release-${Date.now()}`);
+        const packArgs: string[] = [];
+
+        if (core.isDebug()) {
+            packArgs.push('--log-level', '5', '--console-log-level', '5');
         }
 
-        const redactLiterals = [organizationId, serviceAccountKeyId, serviceAccountKeySecret].filter((s) => s.length > 0);
-        await upmCli.Pack(
-            {
-                organizationId,
-                packageDirectory: packageDir,
-                destination: outputDir,
-            },
-            {
-                silent: false,
-                showCommand: false,
-                redactLiterals,
-            }
-        );
+        packArgs.push('pack', packageDir, '--organization-id', organizationId, '--destination', packDestination);
+        // quoted, exec parses the tool path as a command line
+        await exec(`"${upmCliPath}"`, packArgs);
 
-        const tgzGlobber = await glob.create(path.join(outputDir, '*.tgz'));
+        const tgzGlobber = await glob.create(path.join(packDestination, '*.tgz'));
         const tgzFiles = await tgzGlobber.glob();
 
         if (tgzFiles.length === 0) {
@@ -349,10 +354,11 @@ async function getParentSha(ref: string): Promise<string> {
  * @param params Git command parameters
  * @returns Git command output
  */
-async function git(params: string[], warnOnError: boolean = false): Promise<string> {
+async function git(params: string[], warnOnError: boolean = false, env?: { [key: string]: string }): Promise<string> {
     let output: string = '';
     let error: string = '';
     const exitCode = await exec('git', params, {
+        env: env ? { ...process.env, ...env } as { [key: string]: string } : undefined,
         listeners: {
             stdout: (data: Buffer) => {
                 output += data.toString();
