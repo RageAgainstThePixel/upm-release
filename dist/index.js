@@ -5701,7 +5701,7 @@ var require_client_h1 = __commonJS({
       kResume,
       kHTTPContext
     } = require_symbols();
-    var constants5 = require_constants2();
+    var constants6 = require_constants2();
     var EMPTY_BUF = Buffer.alloc(0);
     var FastBuffer = Buffer[Symbol.species];
     var addListener = util2.addListener;
@@ -5773,7 +5773,7 @@ var require_client_h1 = __commonJS({
       constructor(client, socket, { exports: exports3 }) {
         assert4(Number.isFinite(client[kMaxHeadersSize]) && client[kMaxHeadersSize] > 0);
         this.llhttp = exports3;
-        this.ptr = this.llhttp.llhttp_alloc(constants5.TYPE.RESPONSE);
+        this.ptr = this.llhttp.llhttp_alloc(constants6.TYPE.RESPONSE);
         this.client = client;
         this.socket = socket;
         this.timeout = null;
@@ -5868,19 +5868,19 @@ var require_client_h1 = __commonJS({
             currentBufferRef = null;
           }
           const offset = llhttp.llhttp_get_error_pos(this.ptr) - currentBufferPtr;
-          if (ret === constants5.ERROR.PAUSED_UPGRADE) {
+          if (ret === constants6.ERROR.PAUSED_UPGRADE) {
             this.onUpgrade(data.slice(offset));
-          } else if (ret === constants5.ERROR.PAUSED) {
+          } else if (ret === constants6.ERROR.PAUSED) {
             this.paused = true;
             socket.unshift(data.slice(offset));
-          } else if (ret !== constants5.ERROR.OK) {
+          } else if (ret !== constants6.ERROR.OK) {
             const ptr = llhttp.llhttp_get_error_reason(this.ptr);
             let message = "";
             if (ptr) {
               const len = new Uint8Array(llhttp.memory.buffer, ptr).indexOf(0);
               message = "Response does not match the HTTP/1.1 protocol (" + Buffer.from(llhttp.memory.buffer, ptr, len).toString() + ")";
             }
-            throw new HTTPParserError(message, constants5.ERROR[ret], data.slice(offset));
+            throw new HTTPParserError(message, constants6.ERROR[ret], data.slice(offset));
           }
         } catch (err) {
           util2.destroy(socket, err);
@@ -6055,7 +6055,7 @@ var require_client_h1 = __commonJS({
           socket[kBlocking] = false;
           client[kResume]();
         }
-        return pause ? constants5.ERROR.PAUSED : 0;
+        return pause ? constants6.ERROR.PAUSED : 0;
       }
       onBody(buf) {
         const { client, socket, statusCode, maxResponseSize } = this;
@@ -6077,7 +6077,7 @@ var require_client_h1 = __commonJS({
         }
         this.bytesRead += buf.length;
         if (request2.onData(buf) === false) {
-          return constants5.ERROR.PAUSED;
+          return constants6.ERROR.PAUSED;
         }
       }
       onMessageComplete() {
@@ -6112,13 +6112,13 @@ var require_client_h1 = __commonJS({
         if (socket[kWriting]) {
           assert4(client[kRunning] === 0);
           util2.destroy(socket, new InformationalError("reset"));
-          return constants5.ERROR.PAUSED;
+          return constants6.ERROR.PAUSED;
         } else if (!shouldKeepAlive) {
           util2.destroy(socket, new InformationalError("reset"));
-          return constants5.ERROR.PAUSED;
+          return constants6.ERROR.PAUSED;
         } else if (socket[kReset] && client[kRunning] === 0) {
           util2.destroy(socket, new InformationalError("reset"));
-          return constants5.ERROR.PAUSED;
+          return constants6.ERROR.PAUSED;
         } else if (client[kPipelining] == null || client[kPipelining] === 1) {
           setImmediate(() => client[kResume]());
         } else {
@@ -20345,10 +20345,10 @@ var require_truncate = __commonJS({
   "node_modules/semver/functions/truncate.js"(exports2, module2) {
     "use strict";
     var parse2 = require_parse2();
-    var constants5 = require_constants6();
+    var constants6 = require_constants6();
     var SemVer = require_semver();
     var truncate = (version, truncation, options) => {
-      if (!constants5.RELEASE_TYPES.includes(truncation)) {
+      if (!constants6.RELEASE_TYPES.includes(truncation)) {
         return null;
       }
       const clonedVersion = cloneInputVersion(version, options);
@@ -21397,7 +21397,7 @@ var require_semver2 = __commonJS({
   "node_modules/semver/index.js"(exports2, module2) {
     "use strict";
     var internalRe = require_re();
-    var constants5 = require_constants6();
+    var constants6 = require_constants6();
     var SemVer = require_semver();
     var identifiers = require_identifiers();
     var parse2 = require_parse2();
@@ -21481,8 +21481,8 @@ var require_semver2 = __commonJS({
       re: internalRe.re,
       src: internalRe.src,
       tokens: internalRe.t,
-      SEMVER_SPEC_VERSION: constants5.SEMVER_SPEC_VERSION,
-      RELEASE_TYPES: constants5.RELEASE_TYPES,
+      SEMVER_SPEC_VERSION: constants6.SEMVER_SPEC_VERSION,
+      RELEASE_TYPES: constants6.RELEASE_TYPES,
       compareIdentifiers: identifiers.compareIdentifiers,
       rcompareIdentifiers: identifiers.rcompareIdentifiers
     };
@@ -30276,16 +30276,21 @@ async function findLfsPointers(directory) {
   const pointers = [];
   for (const file of output.split("\0").filter((file2) => file2.length > 0)) {
     const filePath = path12.resolve(directory, file);
-    let stat2;
+    let content;
     try {
-      stat2 = await fs6.promises.lstat(filePath);
+      const handle = await fs6.promises.open(filePath, fs6.constants.O_RDONLY | (fs6.constants.O_NOFOLLOW ?? 0));
+      try {
+        const stat2 = await handle.stat();
+        if (!stat2.isFile() || stat2.size > LFS_POINTER_MAX_SIZE) {
+          continue;
+        }
+        content = await handle.readFile({ encoding: "utf-8" });
+      } finally {
+        await handle.close();
+      }
     } catch {
       continue;
     }
-    if (!stat2.isFile() || stat2.size > LFS_POINTER_MAX_SIZE) {
-      continue;
-    }
-    const content = await fs6.promises.readFile(filePath, { encoding: "utf-8" });
     if (content.startsWith(LFS_POINTER_HEADER) && /^oid sha256:[0-9a-f]{64}$/m.test(content)) {
       pointers.push(filePath);
     }
