@@ -60,16 +60,19 @@ export async function findLfsPointers(directory: string): Promise<string[]> {
  * Replaces Git LFS pointer files under a directory with their real content, so the package is packed with the actual files.
  * Uses `git lfs smudge` on each pointer, which works even when the directory has no `.gitattributes` for those files
  * (e.g. a subtree split of a package whose LFS rules live in the repository root).
- * @param directory Directory to scan, inside the git work tree at `repoRoot`.
- * @param repoRoot Root of the git work tree, used to resolve the LFS remote.
+ * @param directory Directory to scan, inside a git work tree. The LFS remote is resolved from the work tree containing it.
+ * @param configOverrides `key=value` git config entries passed to each smudge, e.g. from {@link getLfsConfigOverrides}.
  * @returns Number of files that were materialized.
  */
-export async function materializeLfsFiles(directory: string, repoRoot: string): Promise<number> {
+export async function materializeLfsFiles(directory: string, configOverrides: string[] = []): Promise<number> {
     const pointers = await findLfsPointers(directory);
 
     if (pointers.length === 0) {
         return 0;
     }
+
+    // the work tree that owns the directory, e.g. a submodule, so its own LFS endpoint is used
+    const repoRoot = path.resolve(await gitOutput(['rev-parse', '--show-toplevel'], directory));
 
     const lfsVersion = await exec('git', ['lfs', 'version'], { silent: true, ignoreReturnCode: true });
 
@@ -81,7 +84,7 @@ export async function materializeLfsFiles(directory: string, repoRoot: string): 
     try {
         for (const pointer of pointers) {
             const relativePath = path.relative(repoRoot, pointer).split(path.sep).join('/');
-            await smudge(pointer, relativePath, repoRoot);
+            await smudge(pointer, relativePath, repoRoot, configOverrides);
             core.info(`  ${relativePath}`);
         }
     } finally {
@@ -102,13 +105,15 @@ export async function materializeLfsFiles(directory: string, repoRoot: string): 
  * @param pointer Absolute path of the pointer file.
  * @param relativePath Path of the file relative to `repoRoot`, with forward slashes.
  * @param repoRoot Root of the git work tree.
+ * @param configOverrides `key=value` git config entries passed with `-c`.
  */
-async function smudge(pointer: string, relativePath: string, repoRoot: string): Promise<void> {
+async function smudge(pointer: string, relativePath: string, repoRoot: string, configOverrides: string[]): Promise<void> {
     // private temp dir beside the pointer, so the rename stays on the same file system
     const tempDir = await fs.promises.mkdtemp(path.join(path.dirname(pointer), '.upm-release-lfs-'));
     const tempPath = path.join(tempDir, path.basename(pointer));
     // override any skip smudge or fetch filters, every pointer in the package has to be downloaded
-    const child = spawn('git', ['-c', 'lfs.fetchinclude=', '-c', 'lfs.fetchexclude=', 'lfs', 'smudge', '--', relativePath], {
+    const args = [...configOverrides.flatMap(entry => ['-c', entry]), '-c', 'lfs.fetchinclude=', '-c', 'lfs.fetchexclude=', 'lfs', 'smudge', '--', relativePath];
+    const child = spawn('git', args, {
         cwd: repoRoot,
         env: { ...process.env, GIT_LFS_SKIP_SMUDGE: '0' },
         stdio: ['pipe', 'pipe', 'pipe']
@@ -139,6 +144,53 @@ async function smudge(pointer: string, relativePath: string, repoRoot: string): 
     } finally {
         await fs.promises.rm(tempDir, { recursive: true, force: true });
     }
+}
+
+/**
+ * Reads the LFS settings from a work tree's `.lfsconfig`, such as a custom `lfs.url`, so they can still be applied
+ * after checking out a commit that doesn't have that file (e.g. a subtree split of a nested package).
+ * Settings already set in the git config are skipped, since they take precedence over `.lfsconfig` anyway.
+ * @param repoRoot Root of the git work tree.
+ * @returns `key=value` entries for {@link materializeLfsFiles}.
+ */
+export async function getLfsConfigOverrides(repoRoot: string): Promise<string[]> {
+    const lfsConfig = path.join(repoRoot, '.lfsconfig');
+
+    if (!fs.existsSync(lfsConfig)) {
+        return [];
+    }
+
+    const overrides: string[] = [];
+    const entries = (await gitOutput(['config', '--file', lfsConfig, '--list', '-z'], repoRoot)).split('\0');
+
+    for (const entry of entries.filter(entry => entry.length > 0)) {
+        const newline = entry.indexOf('\n');
+        const key = newline >= 0 ? entry.substring(0, newline) : entry;
+        const value = newline >= 0 ? entry.substring(newline + 1) : '';
+
+        // only the lfs settings git-lfs itself reads from .lfsconfig
+        if (!key.startsWith('lfs.') && !/^remote\..+\.lfs(push)?url$/.test(key)) { continue; }
+
+        const isSet = await exec('git', ['config', '--get', key], { cwd: repoRoot, silent: true, ignoreReturnCode: true });
+
+        if (isSet !== 0) {
+            overrides.push(`${key}=${value}`);
+        }
+    }
+
+    return overrides;
+}
+
+async function gitOutput(args: string[], cwd: string): Promise<string> {
+    const chunks: Buffer[] = [];
+    await exec('git', args, {
+        cwd,
+        silent: true,
+        listeners: {
+            stdout: (data: Buffer) => { chunks.push(data); }
+        }
+    });
+    return Buffer.concat(chunks).toString('utf-8').trim();
 }
 
 /**
