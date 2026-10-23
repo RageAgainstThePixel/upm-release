@@ -30265,16 +30265,17 @@ var import_promises = require("stream/promises");
 var LFS_POINTER_HEADER = "version https://git-lfs.github.com/spec/v1";
 var LFS_POINTER_MAX_SIZE = 1024;
 async function findLfsPointers(directory) {
-  let output = "";
+  const chunks = [];
   await exec("git", ["ls-files", "-z"], {
     cwd: directory,
     silent: true,
     listeners: {
       stdout: (data) => {
-        output += data.toString();
+        chunks.push(data);
       }
     }
   });
+  const output = Buffer.concat(chunks).toString("utf-8");
   const pointers = [];
   for (const file of output.split("\0").filter((file2) => file2.length > 0)) {
     const filePath = path12.resolve(directory, file);
