@@ -30300,11 +30300,12 @@ async function findLfsPointers(directory) {
   }
   return pointers;
 }
-async function materializeLfsFiles(directory, repoRoot) {
+async function materializeLfsFiles(directory, configOverrides = []) {
   const pointers = await findLfsPointers(directory);
   if (pointers.length === 0) {
     return 0;
   }
+  const repoRoot = path12.resolve(await gitOutput(["rev-parse", "--show-toplevel"], directory));
   const lfsVersion = await exec("git", ["lfs", "version"], { silent: true, ignoreReturnCode: true });
   if (lfsVersion !== 0) {
     throw new Error(`Found ${pointers.length} Git LFS pointer file(s) in ${directory}, but git-lfs is not installed on this runner. Install git-lfs before running this action.`);
@@ -30313,7 +30314,7 @@ async function materializeLfsFiles(directory, repoRoot) {
   try {
     for (const pointer of pointers) {
       const relativePath = path12.relative(repoRoot, pointer).split(path12.sep).join("/");
-      await smudge(pointer, relativePath, repoRoot);
+      await smudge(pointer, relativePath, repoRoot, configOverrides);
       info(`  ${relativePath}`);
     }
   } finally {
@@ -30326,10 +30327,11 @@ ${remaining.join("\n")}`);
   }
   return pointers.length;
 }
-async function smudge(pointer, relativePath, repoRoot) {
+async function smudge(pointer, relativePath, repoRoot, configOverrides) {
   const tempDir = await fs6.promises.mkdtemp(path12.join(path12.dirname(pointer), ".upm-release-lfs-"));
   const tempPath = path12.join(tempDir, path12.basename(pointer));
-  const child2 = (0, import_child_process.spawn)("git", ["-c", "lfs.fetchinclude=", "-c", "lfs.fetchexclude=", "lfs", "smudge", "--", relativePath], {
+  const args = [...configOverrides.flatMap((entry) => ["-c", entry]), "-c", "lfs.fetchinclude=", "-c", "lfs.fetchexclude=", "lfs", "smudge", "--", relativePath];
+  const child2 = (0, import_child_process.spawn)("git", args, {
     cwd: repoRoot,
     env: { ...process.env, GIT_LFS_SKIP_SMUDGE: "0" },
     stdio: ["pipe", "pipe", "pipe"]
@@ -30358,6 +30360,40 @@ async function smudge(pointer, relativePath, repoRoot) {
   } finally {
     await fs6.promises.rm(tempDir, { recursive: true, force: true });
   }
+}
+async function getLfsConfigOverrides(repoRoot) {
+  const lfsConfig = path12.join(repoRoot, ".lfsconfig");
+  if (!fs6.existsSync(lfsConfig)) {
+    return [];
+  }
+  const overrides = [];
+  const entries = (await gitOutput(["config", "--file", lfsConfig, "--list", "-z"], repoRoot)).split("\0");
+  for (const entry of entries.filter((entry2) => entry2.length > 0)) {
+    const newline = entry.indexOf("\n");
+    const key = newline >= 0 ? entry.substring(0, newline) : entry;
+    const value = newline >= 0 ? entry.substring(newline + 1) : "";
+    if (!key.startsWith("lfs.") && !/^remote\..+\.lfs(push)?url$/.test(key)) {
+      continue;
+    }
+    const isSet = await exec("git", ["config", "--get", key], { cwd: repoRoot, silent: true, ignoreReturnCode: true });
+    if (isSet !== 0) {
+      overrides.push(`${key}=${value}`);
+    }
+  }
+  return overrides;
+}
+async function gitOutput(args, cwd) {
+  const chunks = [];
+  await exec("git", args, {
+    cwd,
+    silent: true,
+    listeners: {
+      stdout: (data) => {
+        chunks.push(data);
+      }
+    }
+  });
+  return Buffer.concat(chunks).toString("utf-8").trim();
 }
 async function hasLfsAttributes(directory) {
   try {
@@ -30456,7 +30492,9 @@ var main = async () => {
     }
     const split = wantsSplit;
     let commitish = "";
+    let lfsConfigOverrides = [];
     if (split) {
+      lfsConfigOverrides = await getLfsConfigOverrides(workspace);
       startGroup(`UPM subtree split...`);
       try {
         await git(["subtree", "split", "--prefix", relativeWorkspace, "-b", splitUpmBranch]);
@@ -30472,7 +30510,7 @@ var main = async () => {
       commitish = (context2.sha || await git(["rev-parse", "HEAD"])).trim();
     }
     info(`Using target commit ${commitish} for the release.`);
-    const lfsFileCount = await materializeLfsFiles(packageDir, workspace);
+    const lfsFileCount = await materializeLfsFiles(packageDir, lfsConfigOverrides);
     if (lfsFileCount > 0) {
       info(`Downloaded ${lfsFileCount} Git LFS file(s) into the package.`);
       if (split && !await hasLfsAttributes(packageDir)) {
