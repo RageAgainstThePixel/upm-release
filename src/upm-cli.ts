@@ -113,7 +113,8 @@ function findExecutable(installDir: string): string {
  */
 export async function getVersion(executable: string): Promise<string> {
     let output = '';
-    await exec(executable, ['--version'], {
+    // quoted, exec parses the tool path as a command line
+    await exec(`"${executable}"`, ['--version'], {
         silent: true,
         listeners: {
             stdout: (data: Buffer) => {
