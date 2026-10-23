@@ -16,7 +16,8 @@ const LFS_POINTER_MAX_SIZE = 1024;
  */
 export async function findLfsPointers(directory: string): Promise<string[]> {
     const chunks: Buffer[] = [];
-    await exec('git', ['ls-files', '-z'], {
+    // include files of initialized submodules, which otherwise only show up as a gitlink
+    await exec('git', ['ls-files', '-z', '--recurse-submodules'], {
         cwd: directory,
         silent: true,
         listeners: {
@@ -71,8 +72,19 @@ export async function materializeLfsFiles(directory: string, configOverrides: st
         return 0;
     }
 
-    // the work tree that owns the directory, e.g. a submodule, so its own LFS endpoint is used
-    const repoRoot = path.resolve(await gitOutput(['rev-parse', '--show-toplevel'], directory));
+    // smudge each pointer in the work tree that owns it, e.g. a submodule, so its own LFS endpoint is used
+    const directoryRoot = await getWorkTreeRoot(directory);
+    const roots = new Map<string, string>();
+    const getRoot = async (dir: string): Promise<string> => {
+        let root = roots.get(dir);
+
+        if (!root) {
+            root = await getWorkTreeRoot(dir);
+            roots.set(dir, root);
+        }
+
+        return root;
+    };
 
     const lfsVersion = await exec('git', ['lfs', 'version'], { silent: true, ignoreReturnCode: true });
 
@@ -83,8 +95,10 @@ export async function materializeLfsFiles(directory: string, configOverrides: st
     core.startGroup(`Downloading ${pointers.length} Git LFS file(s)...`);
     try {
         for (const pointer of pointers) {
+            const repoRoot = await getRoot(path.dirname(pointer));
             const relativePath = path.relative(repoRoot, pointer).split(path.sep).join('/');
-            await smudge(pointer, relativePath, repoRoot, configOverrides);
+            // the overrides come from the scanned work tree, a submodule uses its own config
+            await smudge(pointer, relativePath, repoRoot, repoRoot === directoryRoot ? configOverrides : []);
             core.info(`  ${relativePath}`);
         }
     } finally {
@@ -201,6 +215,10 @@ const SAFE_LFS_CONFIG_PATTERNS = [
 
 function isSafeLfsConfigKey(key: string): boolean {
     return SAFE_LFS_CONFIG_KEYS.has(key.toLowerCase()) || SAFE_LFS_CONFIG_PATTERNS.some(pattern => pattern.test(key));
+}
+
+async function getWorkTreeRoot(directory: string): Promise<string> {
+    return path.resolve(await gitOutput(['rev-parse', '--show-toplevel'], directory));
 }
 
 async function gitOutput(args: string[], cwd: string): Promise<string> {
