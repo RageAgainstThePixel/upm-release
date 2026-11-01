@@ -1,5 +1,6 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as core from '@actions/core';
 import * as tc from '@actions/tool-cache';
@@ -140,7 +141,9 @@ async function download(releaseTag: string): Promise<string> {
     const zipName = `upm-${platform}.zip`;
     const releaseUrl = `${getCdnBaseUrl()}/releases/${releaseTag}`;
     core.info(`Downloading UPM CLI ${releaseTag} (${platform})...`);
-    const zipPath = await tc.downloadTool(`${releaseUrl}/${zipName}`);
+    // keep the .zip extension, Windows PowerShell's Expand-Archive fallback rejects extensionless files
+    const zipDest = path.join(process.env.RUNNER_TEMP || os.tmpdir(), `${crypto.randomUUID()}.zip`);
+    const zipPath = await tc.downloadTool(`${releaseUrl}/${zipName}`, zipDest);
 
     try {
         const expected = (await getText(`${releaseUrl}/${zipName}.sha256`)).trim().split(/\s+/)[0]?.toLowerCase();
