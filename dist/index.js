@@ -6673,7 +6673,7 @@ var require_client_h2 = __commonJS({
   "node_modules/undici/lib/dispatcher/client-h2.js"(exports2, module2) {
     "use strict";
     var assert4 = require("node:assert");
-    var { pipeline: pipeline2 } = require("node:stream");
+    var { pipeline: pipeline3 } = require("node:stream");
     var util2 = require_util();
     var {
       RequestContentLengthMismatchError,
@@ -7120,7 +7120,7 @@ var require_client_h2 = __commonJS({
     }
     function writeStream(abort, socket, expectsPayload, h2stream, body, client, request2, contentLength) {
       assert4(contentLength !== 0 || client[kRunning] === 0, "stream body cannot be pipelined");
-      const pipe = pipeline2(
+      const pipe = pipeline3(
         body,
         h2stream,
         (err) => {
@@ -10110,7 +10110,7 @@ var require_api_pipeline = __commonJS({
         util2.destroy(ret, err);
       }
     };
-    function pipeline2(opts, handler2) {
+    function pipeline3(opts, handler2) {
       try {
         const pipelineHandler = new PipelineHandler(opts, handler2);
         this.dispatch({ ...opts, body: pipelineHandler.req }, pipelineHandler);
@@ -10119,7 +10119,7 @@ var require_api_pipeline = __commonJS({
         return new PassThrough().destroy(err);
       }
     }
-    module2.exports = pipeline2;
+    module2.exports = pipeline3;
   }
 });
 
@@ -13284,7 +13284,7 @@ var require_fetch = __commonJS({
       subresourceSet
     } = require_constants3();
     var EE = require("node:events");
-    var { Readable, pipeline: pipeline2, finished } = require("node:stream");
+    var { Readable, pipeline: pipeline3, finished } = require("node:stream");
     var { addAbortListener, isErrored, isReadable, bufferToLowerCasedHeaderName } = require_util();
     var { dataURLProcessor, serializeAMimeType, minimizeSupportedMimeType } = require_data_url();
     var { getGlobalDispatcher } = require_global2();
@@ -14228,7 +14228,7 @@ var require_fetch = __commonJS({
                 status,
                 statusText,
                 headersList,
-                body: decoders.length ? pipeline2(this.body, ...decoders, (err) => {
+                body: decoders.length ? pipeline3(this.body, ...decoders, (err) => {
                   if (err) {
                     this.onError(err);
                   }
@@ -18192,7 +18192,7 @@ ${value}`;
 var require_eventsource = __commonJS({
   "node_modules/undici/lib/web/eventsource/eventsource.js"(exports2, module2) {
     "use strict";
-    var { pipeline: pipeline2 } = require("node:stream");
+    var { pipeline: pipeline3 } = require("node:stream");
     var { fetching } = require_fetch();
     var { makeRequest } = require_request2();
     var { webidl } = require_webidl();
@@ -18350,7 +18350,7 @@ var require_eventsource = __commonJS({
               ));
             }
           });
-          pipeline2(
+          pipeline3(
             response.body.stream,
             eventSourceStream,
             (error2) => {
@@ -29894,12 +29894,12 @@ function downloadToolAttempt(url, dest, auth2, headers) {
       debug(`Failed to download from "${url}". Code(${response.message.statusCode}) Message(${response.message.statusMessage})`);
       throw err;
     }
-    const pipeline2 = util.promisify(stream.pipeline);
+    const pipeline3 = util.promisify(stream.pipeline);
     const responseMessageFactory = _getGlobal("TEST_DOWNLOAD_TOOL_RESPONSE_MESSAGE_FACTORY", () => response.message);
     const readStream = responseMessageFactory();
     let succeeded = false;
     try {
-      yield pipeline2(readStream, fs4.createWriteStream(dest));
+      yield pipeline3(readStream, fs4.createWriteStream(dest));
       debug("download complete");
       succeeded = true;
       return dest;
@@ -30190,7 +30190,7 @@ function findExecutable(installDir) {
 }
 async function getVersion(executable) {
   let output = "";
-  await exec(executable, ["--version"], {
+  await exec(`"${executable}"`, ["--version"], {
     silent: true,
     listeners: {
       stdout: (data) => {
@@ -30260,6 +30260,8 @@ async function setupUpmCli(version) {
 // src/git-lfs.ts
 var fs6 = __toESM(require("fs"));
 var path12 = __toESM(require("path"));
+var import_child_process = require("child_process");
+var import_promises = require("stream/promises");
 var LFS_POINTER_HEADER = "version https://git-lfs.github.com/spec/v1";
 var LFS_POINTER_MAX_SIZE = 1024;
 async function findLfsPointers(directory) {
@@ -30310,26 +30312,7 @@ async function materializeLfsFiles(directory, repoRoot) {
   try {
     for (const pointer of pointers) {
       const relativePath = path12.relative(repoRoot, pointer).split(path12.sep).join("/");
-      const chunks = [];
-      let stderr = "";
-      const exitCode = await exec("git", ["lfs", "smudge", "--", relativePath], {
-        cwd: repoRoot,
-        input: await fs6.promises.readFile(pointer),
-        silent: true,
-        ignoreReturnCode: true,
-        listeners: {
-          stdout: (data) => {
-            chunks.push(data);
-          },
-          stderr: (data) => {
-            stderr += data.toString();
-          }
-        }
-      });
-      if (exitCode !== 0) {
-        throw new Error(`git lfs smudge failed for ${relativePath}: ${stderr.trim()}`);
-      }
-      await fs6.promises.writeFile(pointer, Buffer.concat(chunks));
+      await smudge(pointer, relativePath, repoRoot);
       info(`  ${relativePath}`);
     }
   } finally {
@@ -30341,6 +30324,36 @@ async function materializeLfsFiles(directory, repoRoot) {
 ${remaining.join("\n")}`);
   }
   return pointers.length;
+}
+async function smudge(pointer, relativePath, repoRoot) {
+  const tempPath = `${pointer}.upm-release-lfs`;
+  const child2 = (0, import_child_process.spawn)("git", ["-c", "lfs.fetchinclude=", "-c", "lfs.fetchexclude=", "lfs", "smudge", "--", relativePath], {
+    cwd: repoRoot,
+    env: { ...process.env, GIT_LFS_SKIP_SMUDGE: "0" },
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+  let stderr = "";
+  child2.stderr.on("data", (data) => {
+    stderr += data.toString();
+  });
+  const exited = new Promise((resolve4, reject) => {
+    child2.on("error", reject);
+    child2.on("close", (code) => resolve4(code ?? 1));
+  });
+  exited.catch(() => void 0);
+  try {
+    child2.stdin.end(await fs6.promises.readFile(pointer));
+    await (0, import_promises.pipeline)(child2.stdout, fs6.createWriteStream(tempPath));
+    const exitCode = await exited;
+    if (exitCode !== 0) {
+      throw new Error(`git lfs smudge failed for ${relativePath}: ${stderr.trim()}`);
+    }
+    await fs6.promises.rename(tempPath, pointer);
+  } catch (error2) {
+    child2.kill();
+    await fs6.promises.rm(tempPath, { force: true });
+    throw error2;
+  }
 }
 async function hasLfsAttributes(directory) {
   try {
@@ -30545,7 +30558,7 @@ var main = async () => {
       packArgs.push("--log-level", "5", "--console-log-level", "5");
     }
     packArgs.push("pack", packageDir, "--organization-id", organizationId, "--destination", packDestination);
-    await exec(upmCliPath, packArgs);
+    await exec(`"${upmCliPath}"`, packArgs);
     const tgzGlobber = await create(path13.join(packDestination, "*.tgz"));
     const tgzFiles = await tgzGlobber.glob();
     if (tgzFiles.length === 0) {
