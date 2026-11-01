@@ -1,6 +1,6 @@
 {
   "name": "upm-release",
-  "version": "2.0.1",
+  "version": "3.0.0",
   "description": "A GitHub action to sign and release a Unity UPM package.",
   "author": "RageAgainstThePixel",
   "license": "MIT",
@@ -22,10 +22,13 @@
     "@actions/exec": "^3.0.0",
     "@actions/github": "^9.1.1",
     "@actions/glob": "^0.7.0",
-    "@rage-against-the-pixel/unity-cli": "^2.0.0"
+    "@actions/http-client": "^4.0.1",
+    "@actions/tool-cache": "^4.0.0",
+    "semver": "^7.8.5"
   },
   "devDependencies": {
     "@types/node": "^24.12.2",
+    "@types/semver": "^7.8.0",
     "esbuild": "^0.28.0",
     "shx": "^0.4.0",
     "typescript": "^6.0.3"
