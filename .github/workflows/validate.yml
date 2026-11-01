@@ -33,7 +33,9 @@ jobs:
       - name: Check dist is up to date
         shell: bash
         run: |
-          if ! git diff --exit-code --stat -- dist/; then
+          # porcelain also lists untracked files, e.g. a rebuilt dist/index.js the PR deleted
+          if [ -n "$(git status --porcelain -- dist/)" ]; then
+            git status --short -- dist/
             echo "::error::dist/ is out of date. Run npm run build and commit dist/."
             exit 1
           fi
