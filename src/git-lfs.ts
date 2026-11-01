@@ -168,8 +168,8 @@ export async function getLfsConfigOverrides(repoRoot: string): Promise<string[]>
         const key = newline >= 0 ? entry.substring(0, newline) : entry;
         const value = newline >= 0 ? entry.substring(newline + 1) : '';
 
-        // only the lfs settings git-lfs itself reads from .lfsconfig
-        if (!key.startsWith('lfs.') && !/^remote\..+\.lfs(push)?url$/.test(key)) { continue; }
+        // only the settings git-lfs itself accepts from .lfsconfig, anything else (e.g. custom transfer agents) could run programs
+        if (!isSafeLfsConfigKey(key)) { continue; }
 
         const isSet = await exec('git', ['config', '--get', key], { cwd: repoRoot, silent: true, ignoreReturnCode: true });
 
@@ -179,6 +179,28 @@ export async function getLfsConfigOverrides(repoRoot: string): Promise<string[]>
     }
 
     return overrides;
+}
+
+// git-lfs's .lfsconfig allowlist, see https://github.com/git-lfs/git-lfs/blob/main/docs/man/git-lfs-config.adoc
+const SAFE_LFS_CONFIG_KEYS = new Set([
+    'lfs.allowincompletepush',
+    'lfs.fetchexclude',
+    'lfs.fetchinclude',
+    'lfs.gitprotocol',
+    'lfs.locksverify',
+    'lfs.pushurl',
+    'lfs.skipdownloaderrors',
+    'lfs.url'
+]);
+const SAFE_LFS_CONFIG_PATTERNS = [
+    /^lfs\..+\.access$/i,
+    /^lfs\..+\.locksverify$/i,
+    /^remote\..+\.lfsurl$/i,
+    /^remote\..+\.lfspushurl$/i
+];
+
+function isSafeLfsConfigKey(key: string): boolean {
+    return SAFE_LFS_CONFIG_KEYS.has(key.toLowerCase()) || SAFE_LFS_CONFIG_PATTERNS.some(pattern => pattern.test(key));
 }
 
 async function gitOutput(args: string[], cwd: string): Promise<string> {
