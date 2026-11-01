@@ -25,17 +25,24 @@ export async function findLfsPointers(directory: string): Promise<string[]> {
 
     for (const file of output.split('\0').filter(file => file.length > 0)) {
         const filePath = path.resolve(directory, file);
-        let stat: fs.Stats;
+        let content: string;
 
         try {
-            stat = await fs.promises.lstat(filePath);
+            // stat and read through one handle so the file can't change in between, and don't follow symlinks
+            const handle = await fs.promises.open(filePath, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+
+            try {
+                const stat = await handle.stat();
+
+                if (!stat.isFile() || stat.size > LFS_POINTER_MAX_SIZE) { continue; }
+
+                content = await handle.readFile({ encoding: 'utf-8' });
+            } finally {
+                await handle.close();
+            }
         } catch {
             continue;
         }
-
-        if (!stat.isFile() || stat.size > LFS_POINTER_MAX_SIZE) { continue; }
-
-        const content = await fs.promises.readFile(filePath, { encoding: 'utf-8' });
 
         if (content.startsWith(LFS_POINTER_HEADER) && /^oid sha256:[0-9a-f]{64}$/m.test(content)) {
             pointers.push(filePath);
