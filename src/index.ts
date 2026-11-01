@@ -11,7 +11,7 @@ import {
 } from './upm-cli';
 import {
     getLfsConfigOverrides,
-    hasLfsAttributes,
+    findFilesWithoutLfsAttributes,
     materializeLfsFiles
 } from './git-lfs';
 
@@ -169,13 +169,18 @@ const main = async () => {
 
         core.info(`Using target commit ${commitish} for the release.`);
 
-        const lfsFileCount = await materializeLfsFiles(packageDir, lfsConfigOverrides);
+        const lfsFiles = await materializeLfsFiles(packageDir, lfsConfigOverrides);
 
-        if (lfsFileCount > 0) {
-            core.info(`Downloaded ${lfsFileCount} Git LFS file(s) into the package.`);
+        if (lfsFiles.length > 0) {
+            core.info(`Downloaded ${lfsFiles.length} Git LFS file(s) into the package.`);
 
-            if (split && !(await hasLfsAttributes(packageDir))) {
-                core.warning(`The ${splitUpmBranch} branch has Git LFS files but no .gitattributes with LFS rules, so installing it from a git url gets pointer files. Add a .gitattributes with the LFS rules to the package folder.`);
+            if (split) {
+                const withoutRules = await findFilesWithoutLfsAttributes(packageDir, lfsFiles);
+
+                if (withoutRules.length > 0) {
+                    const list = withoutRules.map(file => path.relative(packageDir, file).split(path.sep).join('/')).join('\n');
+                    core.warning(`The ${splitUpmBranch} branch has Git LFS files that no .gitattributes in the package marks with LFS, so installing it from a git url gets pointer files. Add LFS rules for them to a .gitattributes in the package folder:\n${list}`);
+                }
             }
         }
 

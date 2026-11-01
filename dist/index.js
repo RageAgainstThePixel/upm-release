@@ -31212,7 +31212,7 @@ async function findLfsPointers(directory) {
 async function materializeLfsFiles(directory, configOverrides = []) {
   const pointers = await findLfsPointers(directory);
   if (pointers.length === 0) {
-    return 0;
+    return [];
   }
   const directoryRoot = await getWorkTreeRoot(directory);
   const roots = /* @__PURE__ */ new Map();
@@ -31244,7 +31244,7 @@ async function materializeLfsFiles(directory, configOverrides = []) {
     throw new Error(`Git LFS files are still pointers after download:
 ${remaining.join("\n")}`);
   }
-  return pointers.length;
+  return pointers;
 }
 async function smudge(pointer, relativePath, repoRoot, configOverrides) {
   const tempDir = await fs6.promises.mkdtemp(path12.join(path12.dirname(pointer), ".upm-release-lfs-"));
@@ -31336,13 +31336,31 @@ async function gitOutput(args, cwd) {
   });
   return Buffer.concat(chunks).toString("utf-8").trim();
 }
-async function hasLfsAttributes(directory) {
-  try {
-    const attributes = await fs6.promises.readFile(path12.join(directory, ".gitattributes"), { encoding: "utf-8" });
-    return /filter=lfs/.test(attributes);
-  } catch {
-    return false;
+async function findFilesWithoutLfsAttributes(directory, files) {
+  if (files.length === 0) {
+    return [];
   }
+  const repoRoot = await getWorkTreeRoot(directory);
+  const relativePaths = files.map((file) => path12.relative(repoRoot, file).split(path12.sep).join("/"));
+  const chunks = [];
+  await exec("git", ["check-attr", "-z", "--stdin", "filter"], {
+    cwd: repoRoot,
+    silent: true,
+    input: Buffer.from(relativePaths.map((p) => `${p}\0`).join(""), "utf-8"),
+    listeners: {
+      stdout: (data) => {
+        chunks.push(data);
+      }
+    }
+  });
+  const fields = Buffer.concat(chunks).toString("utf-8").split("\0");
+  const lfsPaths = /* @__PURE__ */ new Set();
+  for (let i = 0; i + 2 < fields.length; i += 3) {
+    if (fields[i + 2] === "lfs") {
+      lfsPaths.add(fields[i]);
+    }
+  }
+  return files.filter((_, index) => !lfsPaths.has(relativePaths[index]));
 }
 
 // src/index.ts
@@ -31451,11 +31469,16 @@ var main = async () => {
       commitish = (context2.sha || await git(["rev-parse", "HEAD"])).trim();
     }
     info(`Using target commit ${commitish} for the release.`);
-    const lfsFileCount = await materializeLfsFiles(packageDir, lfsConfigOverrides);
-    if (lfsFileCount > 0) {
-      info(`Downloaded ${lfsFileCount} Git LFS file(s) into the package.`);
-      if (split && !await hasLfsAttributes(packageDir)) {
-        warning(`The ${splitUpmBranch} branch has Git LFS files but no .gitattributes with LFS rules, so installing it from a git url gets pointer files. Add a .gitattributes with the LFS rules to the package folder.`);
+    const lfsFiles = await materializeLfsFiles(packageDir, lfsConfigOverrides);
+    if (lfsFiles.length > 0) {
+      info(`Downloaded ${lfsFiles.length} Git LFS file(s) into the package.`);
+      if (split) {
+        const withoutRules = await findFilesWithoutLfsAttributes(packageDir, lfsFiles);
+        if (withoutRules.length > 0) {
+          const list = withoutRules.map((file) => path13.relative(packageDir, file).split(path13.sep).join("/")).join("\n");
+          warning(`The ${splitUpmBranch} branch has Git LFS files that no .gitattributes in the package marks with LFS, so installing it from a git url gets pointer files. Add LFS rules for them to a .gitattributes in the package folder:
+${list}`);
+        }
       }
     }
     if (!releaseNotes) {

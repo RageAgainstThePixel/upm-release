@@ -63,13 +63,13 @@ export async function findLfsPointers(directory: string): Promise<string[]> {
  * (e.g. a subtree split of a package whose LFS rules live in the repository root).
  * @param directory Directory to scan, inside a git work tree. The LFS remote is resolved from the work tree containing it.
  * @param configOverrides `key=value` git config entries passed to each smudge, e.g. from {@link getLfsConfigOverrides}.
- * @returns Number of files that were materialized.
+ * @returns Absolute paths of the files that were materialized.
  */
-export async function materializeLfsFiles(directory: string, configOverrides: string[] = []): Promise<number> {
+export async function materializeLfsFiles(directory: string, configOverrides: string[] = []): Promise<string[]> {
     const pointers = await findLfsPointers(directory);
 
     if (pointers.length === 0) {
-        return 0;
+        return [];
     }
 
     // smudge each pointer in the work tree that owns it, e.g. a submodule, so its own LFS endpoint is used
@@ -111,7 +111,7 @@ export async function materializeLfsFiles(directory: string, configOverrides: st
         throw new Error(`Git LFS files are still pointers after download:\n${remaining.join('\n')}`);
     }
 
-    return pointers.length;
+    return pointers;
 }
 
 /**
@@ -234,14 +234,36 @@ async function gitOutput(args: string[], cwd: string): Promise<string> {
 }
 
 /**
- * Checks if a directory has a `.gitattributes` file with Git LFS rules.
- * @param directory Directory to check.
+ * Finds the files that no `.gitattributes` in their work tree marks with `filter=lfs`, nested attribute files included.
+ * @param directory Directory inside the work tree to check against.
+ * @param files Absolute paths of the files to check.
+ * @returns Absolute paths of the files without the LFS filter attribute.
  */
-export async function hasLfsAttributes(directory: string): Promise<boolean> {
-    try {
-        const attributes = await fs.promises.readFile(path.join(directory, '.gitattributes'), { encoding: 'utf-8' });
-        return /filter=lfs/.test(attributes);
-    } catch {
-        return false;
+export async function findFilesWithoutLfsAttributes(directory: string, files: string[]): Promise<string[]> {
+    if (files.length === 0) {
+        return [];
     }
+
+    const repoRoot = await getWorkTreeRoot(directory);
+    const relativePaths = files.map(file => path.relative(repoRoot, file).split(path.sep).join('/'));
+    const chunks: Buffer[] = [];
+    await exec('git', ['check-attr', '-z', '--stdin', 'filter'], {
+        cwd: repoRoot,
+        silent: true,
+        input: Buffer.from(relativePaths.map(p => `${p}\0`).join(''), 'utf-8'),
+        listeners: {
+            stdout: (data: Buffer) => { chunks.push(data); }
+        }
+    });
+    // -z output is <path> NUL <attribute> NUL <value> NUL for each path
+    const fields = Buffer.concat(chunks).toString('utf-8').split('\0');
+    const lfsPaths = new Set<string>();
+
+    for (let i = 0; i + 2 < fields.length; i += 3) {
+        if (fields[i + 2] === 'lfs') {
+            lfsPaths.add(fields[i]);
+        }
+    }
+
+    return files.filter((_, index) => !lfsPaths.has(relativePaths[index]));
 }
