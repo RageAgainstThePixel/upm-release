@@ -1,5 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { spawn } from 'child_process';
+import { pipeline } from 'stream/promises';
 import * as core from '@actions/core';
 import { exec } from '@actions/exec';
 
@@ -77,24 +79,7 @@ export async function materializeLfsFiles(directory: string, repoRoot: string): 
     try {
         for (const pointer of pointers) {
             const relativePath = path.relative(repoRoot, pointer).split(path.sep).join('/');
-            const chunks: Buffer[] = [];
-            let stderr = '';
-            const exitCode = await exec('git', ['lfs', 'smudge', '--', relativePath], {
-                cwd: repoRoot,
-                input: await fs.promises.readFile(pointer),
-                silent: true,
-                ignoreReturnCode: true,
-                listeners: {
-                    stdout: (data: Buffer) => { chunks.push(data); },
-                    stderr: (data: Buffer) => { stderr += data.toString(); }
-                }
-            });
-
-            if (exitCode !== 0) {
-                throw new Error(`git lfs smudge failed for ${relativePath}: ${stderr.trim()}`);
-            }
-
-            await fs.promises.writeFile(pointer, Buffer.concat(chunks));
+            await smudge(pointer, relativePath, repoRoot);
             core.info(`  ${relativePath}`);
         }
     } finally {
@@ -108,6 +93,45 @@ export async function materializeLfsFiles(directory: string, repoRoot: string): 
     }
 
     return pointers.length;
+}
+
+/**
+ * Streams `git lfs smudge` output for a pointer file into a temp file, then replaces the pointer with it.
+ * @param pointer Absolute path of the pointer file.
+ * @param relativePath Path of the file relative to `repoRoot`, with forward slashes.
+ * @param repoRoot Root of the git work tree.
+ */
+async function smudge(pointer: string, relativePath: string, repoRoot: string): Promise<void> {
+    const tempPath = `${pointer}.upm-release-lfs`;
+    // override any skip smudge or fetch filters, every pointer in the package has to be downloaded
+    const child = spawn('git', ['-c', 'lfs.fetchinclude=', '-c', 'lfs.fetchexclude=', 'lfs', 'smudge', '--', relativePath], {
+        cwd: repoRoot,
+        env: { ...process.env, GIT_LFS_SKIP_SMUDGE: '0' },
+        stdio: ['pipe', 'pipe', 'pipe']
+    });
+    let stderr = '';
+    child.stderr.on('data', (data: Buffer) => { stderr += data.toString(); });
+    const exited = new Promise<number>((resolve, reject) => {
+        child.on('error', reject);
+        child.on('close', code => resolve(code ?? 1));
+    });
+    exited.catch(() => undefined);
+
+    try {
+        child.stdin.end(await fs.promises.readFile(pointer));
+        await pipeline(child.stdout, fs.createWriteStream(tempPath));
+        const exitCode = await exited;
+
+        if (exitCode !== 0) {
+            throw new Error(`git lfs smudge failed for ${relativePath}: ${stderr.trim()}`);
+        }
+
+        await fs.promises.rename(tempPath, pointer);
+    } catch (error) {
+        child.kill();
+        await fs.promises.rm(tempPath, { force: true });
+        throw error;
+    }
 }
 
 /**

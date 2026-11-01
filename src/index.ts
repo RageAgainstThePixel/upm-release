@@ -270,7 +270,8 @@ const main = async () => {
         }
 
         packArgs.push('pack', packageDir, '--organization-id', organizationId, '--destination', packDestination);
-        await exec(upmCliPath, packArgs);
+        // quoted, exec parses the tool path as a command line
+        await exec(`"${upmCliPath}"`, packArgs);
 
         const tgzGlobber = await glob.create(path.join(packDestination, '*.tgz'));
         const tgzFiles = await tgzGlobber.glob();
