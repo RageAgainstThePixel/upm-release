@@ -10,6 +10,7 @@ import {
     setupUpmCli
 } from './upm-cli';
 import {
+    getLfsConfigOverrides,
     hasLfsAttributes,
     materializeLfsFiles
 } from './git-lfs';
@@ -145,8 +146,11 @@ const main = async () => {
         // don't split if the branch is set to 'none' (case insensitive) or if the workspace is the package dir
         const split = wantsSplit;
         let commitish = '';
+        let lfsConfigOverrides: string[] = [];
 
         if (split) {
+            // the split commit has no root .lfsconfig, keep its settings for the LFS downloads below
+            lfsConfigOverrides = await getLfsConfigOverrides(workspace);
             core.startGroup(`UPM subtree split...`);
             try {
                 await git(['subtree', 'split', '--prefix', relativeWorkspace, '-b', splitUpmBranch]);
@@ -165,7 +169,7 @@ const main = async () => {
 
         core.info(`Using target commit ${commitish} for the release.`);
 
-        const lfsFileCount = await materializeLfsFiles(packageDir, workspace);
+        const lfsFileCount = await materializeLfsFiles(packageDir, lfsConfigOverrides);
 
         if (lfsFileCount > 0) {
             core.info(`Downloaded ${lfsFileCount} Git LFS file(s) into the package.`);
