@@ -15,14 +15,16 @@ const LFS_POINTER_MAX_SIZE = 1024;
  * @returns Absolute paths of pointer files.
  */
 export async function findLfsPointers(directory: string): Promise<string[]> {
-    let output = '';
+    const chunks: Buffer[] = [];
     await exec('git', ['ls-files', '-z'], {
         cwd: directory,
         silent: true,
         listeners: {
-            stdout: (data: Buffer) => { output += data.toString(); }
+            stdout: (data: Buffer) => { chunks.push(data); }
         }
     });
+    // decode once so multibyte filenames split across chunks stay intact
+    const output = Buffer.concat(chunks).toString('utf-8');
     const pointers: string[] = [];
 
     for (const file of output.split('\0').filter(file => file.length > 0)) {
