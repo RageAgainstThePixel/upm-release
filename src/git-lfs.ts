@@ -102,7 +102,9 @@ export async function materializeLfsFiles(directory: string, repoRoot: string): 
  * @param repoRoot Root of the git work tree.
  */
 async function smudge(pointer: string, relativePath: string, repoRoot: string): Promise<void> {
-    const tempPath = `${pointer}.upm-release-lfs`;
+    // private temp dir beside the pointer, so the rename stays on the same file system
+    const tempDir = await fs.promises.mkdtemp(path.join(path.dirname(pointer), '.upm-release-lfs-'));
+    const tempPath = path.join(tempDir, path.basename(pointer));
     // override any skip smudge or fetch filters, every pointer in the package has to be downloaded
     const child = spawn('git', ['-c', 'lfs.fetchinclude=', '-c', 'lfs.fetchexclude=', 'lfs', 'smudge', '--', relativePath], {
         cwd: repoRoot,
@@ -119,18 +121,21 @@ async function smudge(pointer: string, relativePath: string, repoRoot: string): 
 
     try {
         child.stdin.end(await fs.promises.readFile(pointer));
-        await pipeline(child.stdout, fs.createWriteStream(tempPath));
+        await pipeline(child.stdout, fs.createWriteStream(tempPath, { flags: 'wx' }));
         const exitCode = await exited;
 
         if (exitCode !== 0) {
             throw new Error(`git lfs smudge failed for ${relativePath}: ${stderr.trim()}`);
         }
 
+        // keep the checked out file mode, e.g. executable helpers
+        await fs.promises.chmod(tempPath, (await fs.promises.stat(pointer)).mode & 0o7777);
         await fs.promises.rename(tempPath, pointer);
     } catch (error) {
         child.kill();
-        await fs.promises.rm(tempPath, { force: true });
         throw error;
+    } finally {
+        await fs.promises.rm(tempDir, { recursive: true, force: true });
     }
 }
 
