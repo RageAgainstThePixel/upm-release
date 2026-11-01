@@ -30268,7 +30268,7 @@ var LFS_POINTER_HEADER = "version https://git-lfs.github.com/spec/v1";
 var LFS_POINTER_MAX_SIZE = 1024;
 async function findLfsPointers(directory) {
   const chunks = [];
-  await exec("git", ["ls-files", "-z"], {
+  await exec("git", ["ls-files", "-z", "--recurse-submodules"], {
     cwd: directory,
     silent: true,
     listeners: {
@@ -30307,7 +30307,16 @@ async function materializeLfsFiles(directory, configOverrides = []) {
   if (pointers.length === 0) {
     return 0;
   }
-  const repoRoot = path12.resolve(await gitOutput(["rev-parse", "--show-toplevel"], directory));
+  const directoryRoot = await getWorkTreeRoot(directory);
+  const roots = /* @__PURE__ */ new Map();
+  const getRoot = async (dir) => {
+    let root = roots.get(dir);
+    if (!root) {
+      root = await getWorkTreeRoot(dir);
+      roots.set(dir, root);
+    }
+    return root;
+  };
   const lfsVersion = await exec("git", ["lfs", "version"], { silent: true, ignoreReturnCode: true });
   if (lfsVersion !== 0) {
     throw new Error(`Found ${pointers.length} Git LFS pointer file(s) in ${directory}, but git-lfs is not installed on this runner. Install git-lfs before running this action.`);
@@ -30315,8 +30324,9 @@ async function materializeLfsFiles(directory, configOverrides = []) {
   startGroup(`Downloading ${pointers.length} Git LFS file(s)...`);
   try {
     for (const pointer of pointers) {
+      const repoRoot = await getRoot(path12.dirname(pointer));
       const relativePath = path12.relative(repoRoot, pointer).split(path12.sep).join("/");
-      await smudge(pointer, relativePath, repoRoot, configOverrides);
+      await smudge(pointer, relativePath, repoRoot, repoRoot === directoryRoot ? configOverrides : []);
       info(`  ${relativePath}`);
     }
   } finally {
@@ -30402,6 +30412,9 @@ var SAFE_LFS_CONFIG_PATTERNS = [
 ];
 function isSafeLfsConfigKey(key) {
   return SAFE_LFS_CONFIG_KEYS.has(key.toLowerCase()) || SAFE_LFS_CONFIG_PATTERNS.some((pattern) => pattern.test(key));
+}
+async function getWorkTreeRoot(directory) {
+  return path12.resolve(await gitOutput(["rev-parse", "--show-toplevel"], directory));
 }
 async function gitOutput(args, cwd) {
   const chunks = [];
