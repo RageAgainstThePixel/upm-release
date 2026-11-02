@@ -31433,8 +31433,19 @@ var main = async () => {
     packageVersion = packageJson.version;
     const isPreview = packageJson.version.includes("-pre");
     const lastTag = Array.from(tags.keys()).pop() || "";
-    if (tags.has(packageVersion)) {
-      throw new Error(`Tag for ${packageName} ${packageVersion} already exists. Please ensure the package version is updated for a new release.`);
+    const existingTags = (await git(["tag", "--list"])).split("\n").map((tag) => tag.trim()).filter((tag) => tag !== "");
+    if (existingTags.includes(packageVersion)) {
+      warning(`No version change detected: tag ${packageVersion} for ${packageName} already exists, skipping the release. Bump the package version to release a new one.`);
+      return;
+    }
+    const releases = await octokit.paginate(octokit.rest.repos.listReleases, {
+      ...context2.repo,
+      per_page: 100
+    });
+    const existingRelease = releases.find((release2) => release2.tag_name === packageVersion);
+    if (existingRelease) {
+      warning(`No version change detected: a ${existingRelease.draft ? "draft " : ""}release for ${packageName} ${packageVersion} already exists (${existingRelease.html_url}), skipping the release. Bump the package version to release a new one.`);
+      return;
     }
     info(`Generating Release for ${packageName} ${packageVersion}...`);
     const workspace = process.env.GITHUB_WORKSPACE;

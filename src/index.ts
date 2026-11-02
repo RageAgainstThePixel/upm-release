@@ -121,8 +121,25 @@ const main = async () => {
 
         const lastTag = Array.from(tags.keys()).pop() || '';
 
-        if (tags.has(packageVersion)) {
-            throw new Error(`Tag for ${packageName} ${packageVersion} already exists. Please ensure the package version is updated for a new release.`);
+        // a push that doesn't bump the version has nothing to release
+        // check every tag, the semver map above leaves out prerelease tags like 1.2.3-pre.1
+        const existingTags = (await git(['tag', '--list'])).split('\n').map(tag => tag.trim()).filter(tag => tag !== '');
+
+        if (existingTags.includes(packageVersion)) {
+            core.warning(`No version change detected: tag ${packageVersion} for ${packageName} already exists, skipping the release. Bump the package version to release a new one.`);
+            return;
+        }
+
+        // a draft release has no tag until it's published, so a second push would otherwise draft the same version again
+        const releases = await octokit.paginate(octokit.rest.repos.listReleases, {
+            ...github.context.repo,
+            per_page: 100
+        });
+        const existingRelease = releases.find(release => release.tag_name === packageVersion);
+
+        if (existingRelease) {
+            core.warning(`No version change detected: a ${existingRelease.draft ? 'draft ' : ''}release for ${packageName} ${packageVersion} already exists (${existingRelease.html_url}), skipping the release. Bump the package version to release a new one.`);
+            return;
         }
 
         core.info(`Generating Release for ${packageName} ${packageVersion}...`);

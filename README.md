@@ -14,7 +14,7 @@ When the action runs, it will:
 1. Create a draft GitHub release with the signed `.tgz` as a release asset.
 
 > [!IMPORTANT]
-> Make sure that the `package.json` file contains a valid semantic version (e.g., `1.0.0`, `2.1.3`, etc.) before running. If the version is not valid or an existing tag with the same version already exists, the action will fail.
+> Make sure that the `package.json` file contains a valid semantic version (e.g., `1.0.0`, `2.1.3`, etc.) before running. If the version is not valid, the action will fail. If the version didn't change, meaning a tag or a release (draft included) for it already exists, the action warns, skips the release and leaves `artifact-path` empty.
 
 The action generates a ***draft*** GitHub release tagged with the package version and uploads the signed package as a release asset.
 
@@ -68,7 +68,11 @@ jobs:
           split-upm-branch: 'upm' # optional; use 'none' to disable subtree split
           upm-cli-version: 'latest' # optional; e.g. 'v9.27.0'
       - name: Echo Signed Package path
-        run: echo "Signed .tgz at ${{ steps.upm_release.outputs.artifact-path }}"
+        if: ${{ steps.upm_release.outputs.artifact-path != '' }} # empty when the version was already released
+        shell: bash
+        env:
+          ARTIFACT_PATH: ${{ steps.upm_release.outputs.artifact-path }}
+        run: echo "Signed .tgz at ${ARTIFACT_PATH}"
 ```
 
 ### inputs
@@ -89,4 +93,4 @@ jobs:
 
 | name | description |
 | ---- | ----------- |
-| artifact-path | Absolute local path to the signed `.tgz` after signing and release upload succeed. |
+| artifact-path | Absolute local path to the signed `.tgz` after signing and release upload succeed. Empty when the release was skipped because the version didn't change. |
