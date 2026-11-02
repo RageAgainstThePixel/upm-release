@@ -126,7 +126,19 @@ const main = async () => {
         const existingTags = (await git(['tag', '--list'])).split('\n').map(tag => tag.trim());
 
         if (existingTags.includes(packageVersion)) {
-            core.notice(`Tag for ${packageName} ${packageVersion} already exists, skipping the release. Bump the package version to release a new one.`);
+            core.warning(`No version change detected: tag ${packageVersion} for ${packageName} already exists, skipping the release. Bump the package version to release a new one.`);
+            return;
+        }
+
+        // a draft release has no tag until it's published, so a second push would otherwise draft the same version again
+        const releases = await octokit.paginate(octokit.rest.repos.listReleases, {
+            ...github.context.repo,
+            per_page: 100
+        });
+        const existingRelease = releases.find(release => release.tag_name === packageVersion);
+
+        if (existingRelease) {
+            core.warning(`No version change detected: a ${existingRelease.draft ? 'draft ' : ''}release for ${packageName} ${packageVersion} already exists (${existingRelease.html_url}), skipping the release. Bump the package version to release a new one.`);
             return;
         }
 

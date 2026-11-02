@@ -23890,9 +23890,6 @@ function error(message, properties = {}) {
 function warning(message, properties = {}) {
   issueCommand("warning", toCommandProperties(properties), message instanceof Error ? message.toString() : message);
 }
-function notice(message, properties = {}) {
-  issueCommand("notice", toCommandProperties(properties), message instanceof Error ? message.toString() : message);
-}
 function info(message) {
   process.stdout.write(message + os5.EOL);
 }
@@ -31438,7 +31435,16 @@ var main = async () => {
     const lastTag = Array.from(tags.keys()).pop() || "";
     const existingTags = (await git(["tag", "--list"])).split("\n").map((tag) => tag.trim());
     if (existingTags.includes(packageVersion)) {
-      notice(`Tag for ${packageName} ${packageVersion} already exists, skipping the release. Bump the package version to release a new one.`);
+      warning(`No version change detected: tag ${packageVersion} for ${packageName} already exists, skipping the release. Bump the package version to release a new one.`);
+      return;
+    }
+    const releases = await octokit.paginate(octokit.rest.repos.listReleases, {
+      ...context2.repo,
+      per_page: 100
+    });
+    const existingRelease = releases.find((release2) => release2.tag_name === packageVersion);
+    if (existingRelease) {
+      warning(`No version change detected: a ${existingRelease.draft ? "draft " : ""}release for ${packageName} ${packageVersion} already exists (${existingRelease.html_url}), skipping the release. Bump the package version to release a new one.`);
       return;
     }
     info(`Generating Release for ${packageName} ${packageVersion}...`);
