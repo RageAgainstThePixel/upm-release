@@ -122,7 +122,10 @@ const main = async () => {
         const lastTag = Array.from(tags.keys()).pop() || '';
 
         // a push that doesn't bump the version has nothing to release
-        if (tags.has(packageVersion)) {
+        // check every tag, the semver map above leaves out prerelease tags like 1.2.3-pre.1
+        const existingTags = (await git(['tag', '--list'])).split('\n').map(tag => tag.trim());
+
+        if (existingTags.includes(packageVersion)) {
             core.notice(`Tag for ${packageName} ${packageVersion} already exists, skipping the release. Bump the package version to release a new one.`);
             return;
         }

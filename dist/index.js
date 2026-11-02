@@ -31436,7 +31436,8 @@ var main = async () => {
     packageVersion = packageJson.version;
     const isPreview = packageJson.version.includes("-pre");
     const lastTag = Array.from(tags.keys()).pop() || "";
-    if (tags.has(packageVersion)) {
+    const existingTags = (await git(["tag", "--list"])).split("\n").map((tag) => tag.trim());
+    if (existingTags.includes(packageVersion)) {
       notice(`Tag for ${packageName} ${packageVersion} already exists, skipping the release. Bump the package version to release a new one.`);
       return;
     }
