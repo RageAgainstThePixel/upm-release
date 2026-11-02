@@ -121,8 +121,10 @@ const main = async () => {
 
         const lastTag = Array.from(tags.keys()).pop() || '';
 
+        // a push that doesn't bump the version has nothing to release
         if (tags.has(packageVersion)) {
-            throw new Error(`Tag for ${packageName} ${packageVersion} already exists. Please ensure the package version is updated for a new release.`);
+            core.notice(`Tag for ${packageName} ${packageVersion} already exists, skipping the release. Bump the package version to release a new one.`);
+            return;
         }
 
         core.info(`Generating Release for ${packageName} ${packageVersion}...`);

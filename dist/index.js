@@ -23890,6 +23890,9 @@ function error(message, properties = {}) {
 function warning(message, properties = {}) {
   issueCommand("warning", toCommandProperties(properties), message instanceof Error ? message.toString() : message);
 }
+function notice(message, properties = {}) {
+  issueCommand("notice", toCommandProperties(properties), message instanceof Error ? message.toString() : message);
+}
 function info(message) {
   process.stdout.write(message + os5.EOL);
 }
@@ -31434,7 +31437,8 @@ var main = async () => {
     const isPreview = packageJson.version.includes("-pre");
     const lastTag = Array.from(tags.keys()).pop() || "";
     if (tags.has(packageVersion)) {
-      throw new Error(`Tag for ${packageName} ${packageVersion} already exists. Please ensure the package version is updated for a new release.`);
+      notice(`Tag for ${packageName} ${packageVersion} already exists, skipping the release. Bump the package version to release a new one.`);
+      return;
     }
     info(`Generating Release for ${packageName} ${packageVersion}...`);
     const workspace = process.env.GITHUB_WORKSPACE;
