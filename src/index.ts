@@ -123,7 +123,7 @@ const main = async () => {
 
         // a push that doesn't bump the version has nothing to release
         // check every tag, the semver map above leaves out prerelease tags like 1.2.3-pre.1
-        const existingTags = (await git(['tag', '--list'])).split('\n').map(tag => tag.trim());
+        const existingTags = (await git(['tag', '--list'])).split('\n').map(tag => tag.trim()).filter(tag => tag !== '');
 
         if (existingTags.includes(packageVersion)) {
             core.warning(`No version change detected: tag ${packageVersion} for ${packageName} already exists, skipping the release. Bump the package version to release a new one.`);

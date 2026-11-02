@@ -31433,7 +31433,7 @@ var main = async () => {
     packageVersion = packageJson.version;
     const isPreview = packageJson.version.includes("-pre");
     const lastTag = Array.from(tags.keys()).pop() || "";
-    const existingTags = (await git(["tag", "--list"])).split("\n").map((tag) => tag.trim());
+    const existingTags = (await git(["tag", "--list"])).split("\n").map((tag) => tag.trim()).filter((tag) => tag !== "");
     if (existingTags.includes(packageVersion)) {
       warning(`No version change detected: tag ${packageVersion} for ${packageName} already exists, skipping the release. Bump the package version to release a new one.`);
       return;
